@@ -1,0 +1,306 @@
+#!/bin/bash
+
+conf='/etc/patchman/patchman-client.conf'
+protocol=1
+curl_bin=`which curl`
+mktemp_bin=`which mktemp`
+verbose=0
+debug=0
+report=0
+tags="Default"
+
+function usage {
+
+    echo "$0 [-v] [-d] [-n] [-r] [-s SERVER] [-c FILE]"
+    echo "-v: verbose output (default is silent)"
+    echo "-d: debug output"
+    echo "-n: no repo check (required when used as an apt or yum plugin)"
+    echo "-r: request a report from the server (default is no report)"
+    echo "-s SERVER: web server address, e.g. https://patchman.example.com"
+    echo "-c FILE: config file location (default is /etc/patchman/patchman-client.conf)"
+    echo
+    echo "Command line options override config file options."
+    exit 0
+}
+
+function parseopts {
+
+    while getopts "dvns:r" opt; do
+        case $opt in
+        v)
+            verbose=1
+            ;;
+        d)
+            debug=1
+            verbose=1
+            ;;
+        n)
+            no_repo_check=1
+            ;;
+        r)
+            cli_report=1
+            ;;
+        s)
+            cli_server=$OPTARG
+            ;;
+        c)
+            cli_conf=$OPTARG
+            ;;
+        *)
+            usage
+            ;;
+        esac
+    done
+}
+
+function cleanup {
+
+    
+    if [ ${verbose} -eq 1 -a ${debug} -eq 1 ] ; then
+        echo "Debug: not deleting ${package_tmpfile}..."
+        echo "Debug: not deleting ${repo_tmpfile}..."
+    elif [ ${verbose} -eq 1 -a ${debug} -eq 0 ] ; then
+        echo "Deleting ${package_tmpfile}..."
+        echo "Deleting ${repo_tmpfile}..."
+    fi
+    if [ ${debug} -ne 1 ] ; then
+        rm -fr ${package_tmpfile}
+        rm -fr ${repo_tmpfile}
+    fi
+}
+
+function check_conf {
+
+    if [ ! -z "${cli_conf}" ] ; then
+        conf=${cli_conf}
+    fi
+
+    if [ "${conf}" = "" -o ! -f "${conf}" ] ; then
+        if [ ${verbose} -eq 1 ] ; then
+            echo "Warning: config file '${conf}' not found."
+        fi
+    else
+        . ${conf}
+    fi
+
+    if [ -z "${server}" -a -z "${cli_server}" ] ; then
+        echo "Patchman server not set, exiting."
+        exit 1
+    else
+        if [ ! -z "${cli_server}" ] ; then
+            server=${cli_server}
+        fi
+        if [ ! -z "${cli_report}" ] ; then
+            report=${cli_report}
+        fi
+        if [ ${verbose} -eq 1 ] ; then
+            echo "Patchman configuration seems ok:"
+            echo "Patchman Server: ${server}"
+            echo "Tags: ${tags}"
+            echo "Report: ${report}"
+        fi
+    fi
+}
+
+function get_installed_rpms {
+
+    if [ ! -z "`/usr/bin/which rpm 2>/dev/null`" -a -x "`/usr/bin/which rpm 2>/dev/null`" ]; then
+        if [ ${verbose} -eq 1 ] ; then
+            echo 'Finding installed rpms...'
+        fi
+        rpm -qa --queryformat "'%{NAME}' '%{EPOCH}' '%{version}' '%{RELEASE}' '%{ARCH}' 'rpm'\n" 2>/dev/null | sed -e 's/(none)//g' | sed -e 's/\+/%2b/g' >> ${package_tmpfile}
+        if [ ${debug} -eq 1 ] ; then
+            cat ${package_tmpfile}
+        fi
+    fi
+}
+
+function get_installed_debs {
+
+    if [ ! -z "`/usr/bin/which dpkg-query 2>/dev/null`" -a -x "`/usr/bin/which dpkg-query 2>/dev/null`" ] ; then
+        if [ ${verbose} -eq 1 ] ; then
+            echo 'Finding installed debs...'
+        fi
+        OLDIFS=${IFS}
+        IFS="
+"
+        for i in $(dpkg-query -W --showformat="\${Status}\|\${Package} \${Version} \${Architecture}\n" | grep '^install ok installed' | sed -e 's/^install ok installed|//') ; do
+            IFS=${OLDIFS}
+            read name fullversion arch <<<$(echo "${i}" | cut -d " " -f 1,2,3)
+            read remaining release <<<$(echo "${fullversion}" | sed -e "s/\(.*\)-\(.*\)/\1 \2/")
+            epoch=`echo "${remaining}" | cut -d ":" -f 1 -s`
+            version=`echo "${remaining}" | sed -e "s/.*:\(.*\)/\1/"`
+            echo \'${name}\' \'${epoch}\' \'${version}\' \'${release}\' \'${arch}\' \'deb\'>> ${package_tmpfile}
+            if [ ${debug} -eq 1 ] ; then
+                echo \'${name}\' \'${epoch}\' \'${version}\' \'${release}\' \'${arch}\' \'deb\'
+            fi
+        done
+    fi
+}
+
+function get_packages {
+
+    get_installed_rpms
+    get_installed_debs
+}
+
+function get_host_data {
+
+    host_name=`hostname -f`
+    host_kernel=`uname -r | sed -e 's/\+/%2b/g'`
+    host_arch=`uname -m`
+
+    os="unknown"
+    releases="/etc/lsb-release /etc/debian_version /etc/fermi-release /etc/redhat-release /etc/fedora-release /etc/SuSE-release"
+    for i in ${releases} ; do
+        if [ -f $i ] ; then
+            case "${i}" in
+            /etc/lsb-release)
+                tmp_os=`grep DISTRIB_DESCRIPTION ${i}`
+                os=`echo ${tmp_os} | sed -e 's/DISTRIB_DESCRIPTION="\(.*\)"/\1/'`
+                if [ -z "${os}" ] ; then
+                    tmp_os=`grep  DISTRIB_DESC ${i}`
+                    os=`echo ${tmp_os} | sed -e 's/DISTRIB_DESC="\(.*\)"/\1/'`
+                fi
+                break
+                ;;
+            /etc/debian_version)
+                os="Debian `cat ${i}`"
+                break
+                ;;
+            /etc/fermi-release|/etc/redhat-release|/etc/fedora-release)
+                os=`cat ${i}`
+                break
+                ;;
+            /etc/SuSE-release)
+                os=`grep -i suse ${i}`
+                break
+                ;;
+            esac
+        fi
+    done
+    if [ ${debug} -eq 1 ] ; then
+        echo "Host:   ${host_name}"
+        echo "Kernel: ${host_kernel}"
+        echo "Arch:   ${host_arch}"
+        echo "OS:     ${os}"
+    fi
+}
+
+function get_repos {
+
+    OLDIFS=${IFS}
+    IFS="
+"
+
+    # Red Hat / CentOS
+    if [ ! -z "`/usr/bin/which yum 2>/dev/null`" -a -x "`/usr/bin/which yum 2>/dev/null`" ] ; then
+        if [ ${verbose} -eq 1 ] ; then
+            echo 'Finding yum repos...'
+        fi
+        for i in $(yum repolist enabled --noplugins --verbose -C  | egrep "Repo-name|Repo-baseurl" | sed -e ':a;N;$!ba;s/\nRepo-baseurl//g' -e "s/Repo-name[ ]*: /'/g" -e "s/[ ]*: / ${host_arch}' '/g" | sed -e "s/\/*$/'/g") ; do
+            echo \'rpm\' ${i} >> ${repo_tmpfile}
+        done
+    fi
+
+    # Debian
+    if [ ! -z "`/usr/bin/which apt-get 2>/dev/null`" -a -x "`/usr/bin/which apt-get 2>/dev/null`" ] ; then
+        if [ ${verbose} -eq 1 ] ; then
+            echo 'Finding apt repos...'
+        fi
+        gpgs=`find /var/lib/apt/lists -name "*.gpg"`
+        if [ "${gpgs}" != "" ] ; then
+            tmpdir=`${mktemp_bin} -d`
+            cp -a ${gpgs} ${tmpdir}
+        fi
+        for i in $(apt-get update --print-uris | grep Packages | cut -d "'" -f 2 | sed -e "s/\/Packages\.bz2//") ; do
+            echo \'deb\' \'${os} ${host_arch} repo at ${i}\' \'${i}\' >> ${repo_tmpfile}
+        done
+        if [ "${gpgs}" != "" ] ; then
+            cp -a ${tmpdir}/*.gpg /var/lib/apt/lists
+            rm -fr ${tmpdir}
+        fi
+    fi
+
+    # SUSE
+    if [ ! -z "`/usr/bin/which zypper 2>/dev/null`" -a -x "`/usr/bin/which zypper 2>/dev/null`" ] ; then
+        if [ ${verbose} -eq 1 ] ; then
+            echo 'Finding zypper repos...'
+        fi
+        enabled_repos=$(zypper lr | tail +3 | cut -d "|" -f 1,4 | grep "Yes" | cut -d "|" -f 1 | sed -e "s/ //")
+        for i in $enabled_repos ; do
+            enabled[i]="true"
+        done
+        let r=0
+        for i in $(zypper lr -u | tail +3 | cut -d "|" -f 3,6 | sed -e "s/^ /'/g" -e "s/[ ]*| / ${host_arch}' '/g" -e "s/\/*[ ]*$/'/g") ; do
+            let r=$r+1
+            if [ "${enabled[${r}]}" == "true" ] ; then
+                echo \'rpm\' ${i} >> ${repo_tmpfile}
+            fi
+        done
+    fi
+    IFS=${OLDIFS}
+    if [ ${debug} -eq 1 ] ; then
+        cat ${repo_tmpfile}
+    fi
+}
+
+function post_data {
+
+    curl_opts=${curl_options}
+
+    if [ ${verbose} -eq 1 ] ; then
+        curl_opts="${curl_opts} -F verbose=\"1\""
+        echo "Sending data to ${server} with curl..."
+    else
+        curl_opts="${curl_opts} -s";
+    fi
+
+    if [ ${debug} -eq 1 ] ; then
+        curl_opts="${curl_opts} -F debug=\"1\"";
+    fi
+
+    curl_opts="${curl_opts} -F host=\"${host_name}\"";
+    curl_opts="${curl_opts} -F tags=\"${tags}\"";
+    curl_opts="${curl_opts} -F kernel=\"${host_kernel}\"";
+    curl_opts="${curl_opts} -F arch=\"${host_arch}\"";
+    curl_opts="${curl_opts} -F protocol=\"${protocol}\"";
+    curl_opts="${curl_opts} -F os=\"${os}\"";
+    curl_opts="${curl_opts} -F report=\"${report}\"";
+    curl_opts="${curl_opts} -F packages=\<${package_tmpfile}";
+    curl_opts="${curl_opts} -F repos=\<${repo_tmpfile}";
+    post_command="${curl_bin} ${curl_opts} ${server}/reports/upload/"
+
+    sed -i -e 's/%2b/\+/g' ${package_tmpfile}
+
+    if [ ${verbose} -eq 1 ] ; then
+        echo "Command is : ${post_command}"
+    fi
+
+    result=`eval "${post_command}"`
+
+    if [ ${report} -eq 1 ] ; then
+        if [ ! -z "${result}" ] ; then
+            echo "${result}"
+        else
+            echo "No output returned."
+        fi
+    fi
+}
+
+if [ -z "$mktemp_bin" -o -z "$curl_bin" ] ; then
+    echo "Either mktemp or curl was not found, exiting."
+    exit 1 
+fi
+package_tmpfile=`${mktemp_bin}`
+repo_tmpfile=`${mktemp_bin}`
+
+trap cleanup EXIT
+parseopts $@
+check_conf
+get_host_data
+get_packages
+if [ "${no_repo_check}" != "1" ] ; then
+    get_repos
+fi
+post_data
