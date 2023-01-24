@@ -16,23 +16,23 @@ type RPM struct {
 }
 
 func GetInstalledRPMs() ([]RPM, error) {
-    var debug = false
+	var debug = false
 	cmd, err := exec.Command("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{version} %{RELEASE} %{ARCH}\n").Output()
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
 	}
 
-    if debug {
-    	fmt.Println("Running command: ", string(cmd))
-    }
+	if debug {
+		fmt.Println("Running command: ", string(cmd))
+	}
 
 	rpms := []RPM{}
 	for _, line := range strings.Split(string(cmd), "\n") {
 		v := strings.Split(line, " ")
-        if len(v) <= 1 {
-            continue
-        }
+		if len(v) <= 1 {
+			continue
+		}
 		if v[1] == "(none)" {
 			v[1] = ""
 		}
@@ -48,3 +48,8 @@ func GetInstalledRPMs() ([]RPM, error) {
 
 	return rpms, nil
 }
+
+func PrintRPMs(rpms []RPM) {
+    fmt.Println(rpms)
+}
+
