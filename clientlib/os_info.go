@@ -24,7 +24,7 @@ func GetOSInfo() OSInfo {
 	var si sysinfo.SysInfo
 	si.GetSysInfo()
 
-    var osi = OSInfo{}
+	var osi = OSInfo{}
 	osi.Hostname = si.Node.Hostname
 	osi.MachineID = si.Node.MachineID
 	osi.OSName = si.OS.Name
@@ -32,7 +32,7 @@ func GetOSInfo() OSInfo {
 	osi.OSArch = si.Kernel.Architecture
 	osi.Kernel = si.Kernel.Release
 
-    return osi
+	return osi
 }
 
 func PrintOSInfo(osi OSInfo) {
@@ -44,5 +44,3 @@ func PrintOSInfo(osi OSInfo) {
 	fmt.Println("OS arch:", string(osi.OSArch))
 	fmt.Println("Kernel:", string(osi.Kernel))
 }
-
-

@@ -15,6 +15,14 @@ type RPM struct {
 	Arch    string `json:"arch,omitempty"`
 }
 
+func PrintRPM(rpm RPM) {
+	if rpm.Epoch == "" {
+		fmt.Printf("%s-%s-%s.%s.rpm\n", rpm.Name, rpm.Version, rpm.Release, rpm.Arch)
+	} else {
+		fmt.Printf("%s-%s:%s-%s.%s.rpm\n", rpm.Name, rpm.Epoch, rpm.Version, rpm.Release, rpm.Arch)
+	}
+}
+
 func GetInstalledRPMs() ([]RPM, error) {
 	var debug = false
 	cmd, err := exec.Command("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{version} %{RELEASE} %{ARCH}\n").Output()
@@ -50,6 +58,7 @@ func GetInstalledRPMs() ([]RPM, error) {
 }
 
 func PrintRPMs(rpms []RPM) {
-    fmt.Println(rpms)
+	for _, rpm := range rpms {
+		PrintRPM(rpm)
+	}
 }
-

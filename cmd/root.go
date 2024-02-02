@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	cfgFile     string
+	cfgFile string
 
 	rootCmd = &cobra.Command{
 		Use:   "patchman-client",
@@ -15,6 +15,8 @@ var (
 		Long: `Patchman is a django-based linux patch management system.
 This client is a Go client to submit a hosts details to a Patchman server.`,
 	}
+	verbose bool
+	debug   bool
 )
 
 // Execute executes the root command.
@@ -24,13 +26,12 @@ func Execute() error {
 
 func init() {
 	cobra.OnInitialize(initConfig)
-
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is /etc/patchman/patchman-client.yaml)")
 	rootCmd.PersistentFlags().Bool("verbose", false, "verbose output")
 	rootCmd.PersistentFlags().Bool("debug", false, "debug output")
 	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
-// local-updates, tags, server, hostname, config, repo-check
+	// local-updates, tags, server, hostname, config, repo-check
 
 	rootCmd.AddCommand(collectCmd)
 	rootCmd.AddCommand(submitCmd)

@@ -33,7 +33,7 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-        fmt.Printf("Inside subCmd Run with args: %v\n", args)
+		fmt.Printf("Inside subCmd Run with args: %v\n", args)
 		var os_info = clientlib.GetOSInfo()
 		clientlib.PrintOSInfo(os_info)
 		var rpms, err = clientlib.GetInstalledRPMs()
