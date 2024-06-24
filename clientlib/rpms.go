@@ -31,7 +31,7 @@ func GetInstalledRPMs() ([]RPM, error) {
 		return nil, err
 	}
 
-	if debug {
+	if debug { //FIXME printing the output?
 		fmt.Println("Running command: ", string(cmd))
 	}
 

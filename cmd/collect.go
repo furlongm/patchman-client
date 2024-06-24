@@ -36,9 +36,16 @@ to quickly create a Cobra application.`,
 		fmt.Printf("Inside subCmd Run with args: %v\n", args)
 		var os_info = clientlib.GetOSInfo()
 		clientlib.PrintOSInfo(os_info)
-		var rpms, err = clientlib.GetInstalledRPMs()
+		var err error
+		var rpms []clientlib.RPM
+		rpms, err = clientlib.GetInstalledRPMs()
 		if err == nil {
 			clientlib.PrintRPMs(rpms)
+		}
+		var repos []clientlib.ZyppRepo
+		repos, err = clientlib.GetZyppRepos()
+		if err == nil {
+			clientlib.PrintZyppRepos(repos)
 		}
 	},
 }

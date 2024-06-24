@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"fmt"
 	"github.com/spf13/cobra"
+	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
 )
 
@@ -32,7 +32,6 @@ func init() {
 	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	// local-updates, tags, server, hostname, config, repo-check
-
 	rootCmd.AddCommand(collectCmd)
 	rootCmd.AddCommand(submitCmd)
 }
@@ -50,7 +49,15 @@ func initConfig() {
 
 	viper.AutomaticEnv()
 
+	if verbose {
+		jww.SetStdoutThreshold(jww.LevelInfo)
+	}
+
+	if debug {
+		jww.SetStdoutThreshold(jww.LevelDebug)
+	}
+
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+		jww.INFO.Println("Using config file:", viper.ConfigFileUsed())
 	}
 }
