@@ -36,7 +36,6 @@ func GetOSInfo() OSInfo {
 }
 
 func PrintOSInfo(osi OSInfo) {
-
 	fmt.Println("hostname:", string(osi.Hostname))
 	fmt.Println("machine id:", string(osi.MachineID))
 	fmt.Println("OS name: ", string(osi.OSName))
