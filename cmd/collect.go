@@ -37,11 +37,19 @@ to quickly create a Cobra application.`,
 		var os_info = clientlib.GetOSInfo()
 		clientlib.PrintOSInfo(os_info)
 		var err error
+
 		var rpms []clientlib.RPM
 		rpms, err = clientlib.GetInstalledRPMs()
 		if err == nil {
 			clientlib.PrintRPMs(rpms)
 		}
+
+		var debs []clientlib.DEB
+		debs, err = clientlib.GetInstalledDEBs()
+		if err == nil {
+			clientlib.PrintDEBs(debs)
+		}
+
 		var repos []clientlib.ZyppRepo
 		repos, err = clientlib.GetZyppRepos()
 		if err == nil {
