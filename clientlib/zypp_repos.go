@@ -4,7 +4,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"log"
-	"os/exec"
 )
 
 type ZyppXMLStream struct {
@@ -33,15 +32,10 @@ func PrintZyppRepo(repo ZyppRepo) {
 }
 
 func GetZyppRepos() ([]ZyppRepo, error) {
-	var debug = false
-	cmd, err := exec.Command("zypper", "-x", "lr").Output()
+	cmd, err := RunCommand("zypper", "-x", "lr")
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
-	}
-
-	if debug {
-		fmt.Println("Running command: ", string(cmd))
 	}
 	var zypp_xml_stream ZyppXMLStream
 	xml.Unmarshal(cmd, &zypp_xml_stream)

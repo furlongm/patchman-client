@@ -3,7 +3,6 @@ package clientlib
 import (
 	"fmt"
 	"log"
-	"os/exec"
 	"strings"
 )
 
@@ -24,17 +23,11 @@ func PrintRPM(rpm RPM) {
 }
 
 func GetInstalledRPMs() ([]RPM, error) {
-	var debug = false
-	cmd, err := exec.Command("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{version} %{RELEASE} %{ARCH}\n").Output()
+	cmd, err := RunCommand("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{version} %{RELEASE} %{ARCH}\n")
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
 	}
-
-	if debug { //FIXME printing the output?
-		fmt.Println("Running command: ", string(cmd))
-	}
-
 	rpms := []RPM{}
 	for _, line := range strings.Split(string(cmd), "\n") {
 		v := strings.Split(line, " ")
