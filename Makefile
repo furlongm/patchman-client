@@ -1,4 +1,4 @@
-.RECIPEPREFIX += 
+.RECIPEPREFIX := $() $()
 
 build:
     go build -o patchman-client-go patchman-client/patchman-client.go
