@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 Marcus Furlong <furlongm@gmail.com>
+Copyright © 2024 Marcus Furlong <furlongm@gmail.com>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -52,6 +52,12 @@ to quickly create a Cobra application.`,
 		debs, err = packages.GetInstalledDEBs()
 		if err == nil {
 			packages.PrintDEBs(debs)
+		}
+
+		var apt_repos []repos.AptRepo
+		apt_repos, err = repos.GetAptRepos(os_info)
+		if err == nil {
+			repos.PrintAptRepos(apt_repos)
 		}
 
 		var zypp_repos []repos.ZyppRepo
