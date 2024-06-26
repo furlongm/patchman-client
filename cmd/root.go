@@ -13,7 +13,7 @@ var (
 		Use:   "patchman-client",
 		Short: "A go client for patchman",
 		Long: `Patchman is a django-based linux patch management system.
-This client is a Go client to submit a hosts details to a Patchman server.`,
+This go client collects and submits a hosts details to a Patchman server.`,
 	}
 	verbose bool
 	debug   bool

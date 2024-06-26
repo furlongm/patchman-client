@@ -1,7 +1,8 @@
-package clientlib
+package packages
 
 import (
 	"fmt"
+	"github.com/furlongm/patchman-client-go/lib/util"
 	"log"
 	"strings"
 )
@@ -23,7 +24,7 @@ func PrintRPM(rpm RPM) {
 }
 
 func GetInstalledRPMs() ([]RPM, error) {
-	cmd, err := RunCommand("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{version} %{RELEASE} %{ARCH}\n")
+	cmd, err := util.RunCommand("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{version} %{RELEASE} %{ARCH}\n")
 	if err != nil {
 		log.Fatal(err)
 		return nil, err

@@ -1,7 +1,8 @@
-package clientlib
+package packages
 
 import (
 	"fmt"
+	"github.com/furlongm/patchman-client-go/lib/util"
 	"github.com/knqyf263/go-deb-version"
 	"log"
 	"log/slog"
@@ -25,7 +26,7 @@ func PrintDEB(deb DEB) {
 }
 
 func GetInstalledDEBs() ([]DEB, error) {
-	cmd, err := RunCommand("dpkg-query", "-W", "--showformat", "${Status}|${Package}|${Version}|${Architecture}\n")
+	cmd, err := util.RunCommand("dpkg-query", "-W", "--showformat", "${Status}|${Package}|${Version}|${Architecture}\n")
 	if err != nil {
 		log.Fatal(err)
 		return nil, err

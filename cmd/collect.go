@@ -18,7 +18,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/furlongm/patchman-client-go/clientlib"
+	"github.com/furlongm/patchman-client-go/lib/os"
+	"github.com/furlongm/patchman-client-go/lib/packages"
+	"github.com/furlongm/patchman-client-go/lib/repos"
 	"github.com/spf13/cobra"
 )
 
@@ -34,26 +36,28 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Inside subCmd Run with args: %v\n", args)
-		var os_info = clientlib.GetOSInfo()
-		clientlib.PrintOSInfo(os_info)
+
+		var os_info = os.GetOSInfo()
+		os.PrintOSInfo(os_info)
+
 		var err error
 
-		var rpms []clientlib.RPM
-		rpms, err = clientlib.GetInstalledRPMs()
+		var rpms []packages.RPM
+		rpms, err = packages.GetInstalledRPMs()
 		if err == nil {
-			clientlib.PrintRPMs(rpms)
+			packages.PrintRPMs(rpms)
 		}
 
-		var debs []clientlib.DEB
-		debs, err = clientlib.GetInstalledDEBs()
+		var debs []packages.DEB
+		debs, err = packages.GetInstalledDEBs()
 		if err == nil {
-			clientlib.PrintDEBs(debs)
+			packages.PrintDEBs(debs)
 		}
 
-		var repos []clientlib.ZyppRepo
-		repos, err = clientlib.GetZyppRepos()
+		var zypp_repos []repos.ZyppRepo
+		zypp_repos, err = repos.GetZyppRepos()
 		if err == nil {
-			clientlib.PrintZyppRepos(repos)
+			repos.PrintZyppRepos(zypp_repos)
 		}
 	},
 }

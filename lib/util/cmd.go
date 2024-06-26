@@ -1,4 +1,4 @@
-package clientlib
+package util
 
 import (
 	"fmt"

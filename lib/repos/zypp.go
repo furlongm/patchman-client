@@ -1,8 +1,9 @@
-package clientlib
+package repos
 
 import (
 	"encoding/xml"
 	"fmt"
+	"github.com/furlongm/patchman-client-go/lib/util"
 	"log"
 )
 
@@ -32,7 +33,7 @@ func PrintZyppRepo(repo ZyppRepo) {
 }
 
 func GetZyppRepos() ([]ZyppRepo, error) {
-	cmd, err := RunCommand("zypper", "-x", "lr")
+	cmd, err := util.RunCommand("zypper", "-x", "lr")
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
