@@ -17,14 +17,14 @@ type RPM struct {
 
 func PrintRPM(rpm RPM) {
 	if rpm.Epoch == "" {
-		fmt.Printf("%s-%s-%s.%s.rpm\n", rpm.Name, rpm.Version, rpm.Release, rpm.Arch)
+		fmt.Printf("%s-%s-%s.%s\n", rpm.Name, rpm.Version, rpm.Release, rpm.Arch)
 	} else {
-		fmt.Printf("%s-%s:%s-%s.%s.rpm\n", rpm.Name, rpm.Epoch, rpm.Version, rpm.Release, rpm.Arch)
+		fmt.Printf("%s-%s:%s-%s.%s\n", rpm.Name, rpm.Epoch, rpm.Version, rpm.Release, rpm.Arch)
 	}
 }
 
 func GetInstalledRPMs() ([]RPM, error) {
-	cmd, err := util.RunCommand("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{version} %{RELEASE} %{ARCH}\n")
+	cmd, err := util.RunCommand("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{VERSION} %{RELEASE} %{ARCH}\n")
 	if err != nil {
 		log.Fatal(err)
 		return nil, err

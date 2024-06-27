@@ -27,7 +27,7 @@ func GetOSInfo() OSInfo {
 	var si sysinfo.SysInfo
 	si.GetSysInfo()
 
-//	fmt.Println(si)
+	//	fmt.Println(si)
 
 	var osi = OSInfo{}
 	osi.Hostname = si.Node.Hostname
