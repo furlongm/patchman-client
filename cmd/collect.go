@@ -63,7 +63,7 @@ to quickly create a Cobra application.`,
 		var zypp_repos []repos.ZyppRepo
 		zypp_repos, err = repos.GetZyppRepos()
 		if err == nil {
-			repos.PrintZyppRepos(zypp_repos)
+			repos.PrintZyppReposTable(zypp_repos)
 		}
 	},
 }

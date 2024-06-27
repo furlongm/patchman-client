@@ -5,6 +5,8 @@ go 1.22
 toolchain go1.22.4
 
 require (
+	github.com/jedib0t/go-pretty/v6 v6.5.9
+	github.com/knqyf263/go-deb-version v0.0.0-20230223133812-3ed183d23422
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/jwalterweatherman v1.1.0
 	github.com/spf13/viper v1.19.0
@@ -16,10 +18,11 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/knqyf263/go-deb-version v0.0.0-20230223133812-3ed183d23422 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sagikazarmark/locafero v0.6.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect

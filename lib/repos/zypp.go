@@ -4,7 +4,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"github.com/furlongm/patchman-client-go/lib/util"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"log"
+	"os"
+	"slices"
 )
 
 type ZyppXMLStream struct {
@@ -29,7 +32,23 @@ type ZyppRepo struct {
 // 'rpm' 'furlongm x86_64' 'furlongm' '99' 'http://download.opensuse.org/repositories/home:/furlongm/15.5/'
 
 func PrintZyppRepo(repo ZyppRepo) {
-	fmt.Printf("%s %s %s %s %s \n", repo.Alias, repo.Name, repo.Enabled, repo.Priority, repo.Url)
+	fmt.Printf("%s %s %d %s\n", repo.Alias, repo.Name, repo.Priority, repo.Url)
+}
+
+func ZyppRepoDisabled(repo ZyppRepo) bool {
+	return !repo.Enabled
+}
+
+func PrintZyppReposTable(repos []ZyppRepo) {
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Alias", "Name", "Priority", "URL"})
+	for _, repo := range repos {
+		t.AppendRows([]table.Row{
+			{repo.Alias, repo.Name, repo.Priority, repo.Url},
+		})
+	}
+	t.Render()
 }
 
 func GetZyppRepos() ([]ZyppRepo, error) {
@@ -40,7 +59,9 @@ func GetZyppRepos() ([]ZyppRepo, error) {
 	}
 	var zypp_xml_stream ZyppXMLStream
 	xml.Unmarshal(cmd, &zypp_xml_stream)
-	return zypp_xml_stream.ZyppRepos.ZyppRepos, nil
+	zypp_repos := zypp_xml_stream.ZyppRepos.ZyppRepos
+	zypp_repos = slices.DeleteFunc(zypp_repos, ZyppRepoDisabled)
+	return zypp_repos, nil
 }
 
 func PrintZyppRepos(repos []ZyppRepo) {
