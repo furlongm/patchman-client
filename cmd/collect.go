@@ -18,9 +18,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/furlongm/patchman-client-go/lib/os"
 	"github.com/furlongm/patchman-client-go/lib/packages"
 	"github.com/furlongm/patchman-client-go/lib/repos"
+	"github.com/furlongm/patchman-client-go/lib/si"
 	"github.com/spf13/cobra"
 )
 
@@ -37,8 +37,8 @@ to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Inside subCmd Run with args: %v\n", args)
 
-		var os_info = os.GetOSInfo()
-		os.PrintOSInfo(os_info)
+		var os_info = si.GetOSInfo()
+		si.PrintOSInfo(os_info)
 
 		var err error
 
@@ -56,13 +56,13 @@ to quickly create a Cobra application.`,
 
 		var apt_repos []repos.AptRepo
 		apt_repos, err = repos.GetAptRepos(os_info)
-		if err == nil {
+		if apt_repos != nil && err == nil {
 			repos.PrintAptRepos(apt_repos)
 		}
 
 		var zypp_repos []repos.ZyppRepo
 		zypp_repos, err = repos.GetZyppRepos()
-		if err == nil {
+		if zypp_repos != nil && err == nil {
 			repos.PrintZyppReposTable(zypp_repos)
 		}
 	},

@@ -18,11 +18,16 @@ type DEB struct {
 }
 
 func PrintDEB(deb DEB) {
-	if deb.Epoch == "0" {
-		fmt.Printf("%s-%s-%s.%s\n", deb.Name, deb.Version, deb.Release, deb.Arch)
-	} else {
-		fmt.Printf("%s-%s:%s-%s.%s\n", deb.Name, deb.Epoch, deb.Version, deb.Release, deb.Arch)
+	output := deb.Name
+	if deb.Epoch != "0" {
+		output += "-" + deb.Epoch
 	}
+	output += "-" + deb.Version
+	if deb.Release != "" {
+		output += "-" + deb.Release
+	}
+	output += "-" + deb.Arch
+	fmt.Println(output)
 }
 
 func GetInstalledDEBs() ([]DEB, error) {

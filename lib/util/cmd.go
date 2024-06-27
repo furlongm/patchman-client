@@ -34,3 +34,10 @@ func RunCommand(name string, args ...string) ([]byte, error) {
 		return output, nil
 	}
 }
+
+func CheckError(err error) {
+	if err != nil {
+		ErrAttr(err)
+		panic(err)
+	}
+}
