@@ -4,7 +4,7 @@ format:
     find -name *.go -exec go fmt {} \;
 
 build:
-    go build -o patchman-client-go patchman-client/patchman-client.go
+    CGO_ENABLED=0 go build -o patchman-client-go patchman-client/patchman-client.go
 
 all: format build
 
