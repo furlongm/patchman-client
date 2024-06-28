@@ -57,7 +57,7 @@ to quickly create a Cobra application.`,
 		var apt_repos []repos.AptRepo
 		apt_repos, err = repos.GetAptRepos(os_info)
 		if apt_repos != nil && err == nil {
-			repos.PrintAptRepos(apt_repos)
+			repos.PrintAptReposTable(apt_repos)
 		}
 
 		var zypp_repos []repos.ZyppRepo

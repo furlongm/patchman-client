@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/furlongm/patchman-client-go/lib/si"
 	"github.com/furlongm/patchman-client-go/lib/util"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"log"
 	"os"
 	"regexp"
@@ -20,6 +21,18 @@ type AptRepo struct {
 
 func PrintAptRepo(repo AptRepo) {
 	fmt.Println(repo.Name, repo.Priority, repo.Urls)
+}
+
+func PrintAptReposTable(repos []AptRepo) {
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Name", "Priority", "URL"})
+	for _, repo := range repos {
+		t.AppendRows([]table.Row{
+			{repo.Name, repo.Priority, repo.Urls},
+		})
+	}
+	t.Render()
 }
 
 func ConstructAptRepoURL(url string, components []string) string {
