@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patchman-client"
+version = "4.0.8"
+description = "Patchman client for reporting system packages and updates"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "Marcus Furlong", email = "furlongm@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+]
+keywords = ["patchman", "patch", "security", "updates", "packages"]
+requires-python = ">=3.6"
+dependencies = [
+    "requests>=2.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/furlongm/patchman"
+Repository = "https://github.com/furlongm/patchman-client"
+Issues = "https://github.com/furlongm/patchman-client/issues"
+
+[project.scripts]
+patchman-client = "patchman_client.client:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["patchman_client*"]
