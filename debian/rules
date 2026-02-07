@@ -1,0 +1,33 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export VERSION = $(shell cat VERSION.txt)
+
+%:
+	dh $@ --with python3
+
+override_dh_auto_build:
+	# Build Go client
+	cd go && GOFLAGS="-buildmode=pie" go build -ldflags "-X github.com/furlongm/patchman-client/go/lib/report.Version=$(VERSION)" -o patchman-client-go ./cmd
+
+override_dh_auto_install:
+	# Install bash client
+	install -D -m 755 bash/patchman-client debian/patchman-client-bash/usr/sbin/patchman-client-bash
+	install -D -m 644 bash/patchman-client.conf debian/patchman-client-bash/etc/patchman/patchman-client.conf
+	
+	# Install python client
+	install -D -m 755 python/patchman_client/client.py debian/patchman-client-python/usr/sbin/patchman-client-python
+	
+	# Install go client
+	install -D -m 755 go/patchman-client-go debian/patchman-client-go/usr/sbin/patchman-client-go
+	
+	# Install hooks and systemd files in meta-package
+	install -D -m 644 hooks/apt/05patchman debian/patchman-client/etc/apt/apt.conf.d/05patchman
+	install -D -m 644 contrib/systemd/patchman-client.service debian/patchman-client/lib/systemd/system/patchman-client.service
+	install -D -m 644 contrib/systemd/patchman-client.timer debian/patchman-client/lib/systemd/system/patchman-client.timer
+
+override_dh_auto_test:
+	# Skip tests during package build
+
+override_dh_auto_clean:
+	rm -f go/patchman-client-go

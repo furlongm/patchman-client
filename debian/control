@@ -1,0 +1,52 @@
+Source: patchman-client
+Section: admin
+Priority: optional
+Maintainer: Marcus Furlong <furlongm@gmail.com>
+Build-Depends: debhelper-compat (= 13), golang-go (>= 1.21), dh-golang, dh-python, python3
+Standards-Version: 4.6.2
+Homepage: https://github.com/furlongm/patchman-client
+Vcs-Git: https://github.com/furlongm/patchman-client.git
+Vcs-Browser: https://github.com/furlongm/patchman-client
+
+Package: patchman-client
+Architecture: all
+Depends: ${misc:Depends}, patchman-client-bash | patchman-client-python | patchman-client-go
+Description: Patchman client - meta-package with hooks
+ Patchman client sends system package information to a patchman server.
+ .
+ This meta-package installs package manager hooks and depends on one of the
+ client implementations (bash, python, or go).
+ .
+ The default implementation is bash (most tested). Use update-alternatives
+ to switch between implementations:
+   update-alternatives --config patchman-client
+
+Package: patchman-client-bash
+Architecture: all
+Depends: ${misc:Depends}, curl, coreutils, gawk, jq
+Provides: patchman-client-impl
+Description: Patchman client - bash implementation
+ Patchman client sends system package information to a patchman server.
+ .
+ This package provides the bash implementation of the patchman client.
+ It is the most tested and recommended implementation.
+
+Package: patchman-client-python
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}, python3-requests
+Provides: patchman-client-impl
+Description: Patchman client - Python implementation
+ Patchman client sends system package information to a patchman server.
+ .
+ This package provides the Python implementation of the patchman client.
+ It uses the REST API (protocol 2) only.
+
+Package: patchman-client-go
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Provides: patchman-client-impl
+Description: Patchman client - Go implementation
+ Patchman client sends system package information to a patchman server.
+ .
+ This package provides the Go implementation of the patchman client.
+ It is a compiled binary with no runtime dependencies.

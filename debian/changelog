@@ -1,0 +1,8 @@
+patchman-client (4.0.8-1) stable; urgency=medium
+
+  * Initial release of unified patchman-client package
+  * Includes bash, python, and go implementations
+  * Uses update-alternatives for switching implementations
+  * Adds package manager hooks (apt, dnf, yum, zypper, pacman, portage)
+
+ -- Marcus Furlong <furlongm@gmail.com>  Fri, 07 Feb 2026 19:00:00 +0000

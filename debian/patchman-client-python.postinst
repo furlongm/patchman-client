@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        update-alternatives --install /usr/sbin/patchman-client patchman-client \
+            /usr/sbin/patchman-client-python 20
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
