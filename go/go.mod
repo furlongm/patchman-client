@@ -1,6 +1,6 @@
 module github.com/furlongm/patchman-client/go
 
-go 1.25
+go 1.22
 
 toolchain go1.25.7
 
