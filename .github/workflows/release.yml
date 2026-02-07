@@ -57,6 +57,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: patchman-client-go-${{ matrix.goos }}-${{ matrix.goarch }}
+          body: ""
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -90,6 +91,7 @@ jobs:
             ../patchman-client-bash_${{ env.VERSION }}-1_all.deb
             ../patchman-client-python_${{ env.VERSION }}-1_all.deb
             ../patchman-client-go_${{ env.VERSION }}-1_*.deb
+          body: ""
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -121,6 +123,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: "*.rpm"
+          body: ""
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
