@@ -7,8 +7,8 @@ export VERSION = $(shell git describe --tags --always 2>/dev/null | sed 's/^v//'
 	dh $@ --with python3
 
 override_dh_auto_build:
-	# Build Go client
-	cd go && GOFLAGS="-buildmode=pie" go build -ldflags "-X github.com/furlongm/patchman-client/go/lib/report.Version=$(VERSION)" -o patchman-client-go ./cmd
+	# Build Go client with modules enabled
+	cd go && GO111MODULE=on GOPROXY=https://proxy.golang.org,direct go build -ldflags "-X github.com/furlongm/patchman-client/go/lib/report.Version=$(VERSION)" -o patchman-client-go ./cmd
 
 override_dh_auto_install:
 	# Install bash client
