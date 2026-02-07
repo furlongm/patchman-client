@@ -1,4 +1,4 @@
-module github.com/furlongm/patchman-client-go
+module github.com/furlongm/patchman-client/go
 
 go 1.22
 
@@ -11,6 +11,7 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0
 	github.com/spf13/viper v1.19.0
 	github.com/zcalusic/sysinfo v1.1.0
+	golang.org/x/text v0.16.0
 )
 
 require (
@@ -30,11 +31,9 @@ require (
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8 // indirect
 	golang.org/x/sys v0.21.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

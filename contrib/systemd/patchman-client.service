@@ -1,0 +1,24 @@
+[Unit]
+Description=Patchman Client Report Submission
+Documentation=https://github.com/furlongm/patchman
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/patchman-client submit
+# Use config file for server URL and API key
+# Or set environment variables:
+# Environment=PATCHMAN_SERVER=https://patchman.example.com
+# Environment=PATCHMAN_API_KEY=your-api-key
+# EnvironmentFile=-/etc/sysconfig/patchman-client
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/
+
+[Install]
+WantedBy=multi-user.target

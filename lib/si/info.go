@@ -1,11 +1,16 @@
 package si
 
 import (
+	"bufio"
 	"fmt"
-	"github.com/zcalusic/sysinfo"
 	"log"
+	"os"
 	"runtime"
 	"strings"
+
+	"github.com/zcalusic/sysinfo"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type OSInfo struct {
@@ -17,6 +22,8 @@ type OSInfo struct {
 	OSRelease string `json:"os_release,omitempty"`
 	OSArch    string `json:"os_arch,omitempty"`
 	Kernel    string `json:"kernel,omitempty"`
+	CPE       string `json:"cpe,omitempty"`
+	Codename  string `json:"codename,omitempty"`
 }
 
 func GetOSInfo() OSInfo {
@@ -27,28 +34,76 @@ func GetOSInfo() OSInfo {
 	var si sysinfo.SysInfo
 	si.GetSysInfo()
 
-	//	fmt.Println(si)
+	caser := cases.Title(language.English)
 
 	var osi = OSInfo{}
 	osi.Hostname = si.Node.Hostname
 	osi.MachineID = si.Node.MachineID
 	osi.OSName = si.OS.Name
-	osi.OSVendor = strings.Title(si.OS.Vendor)
+	osi.OSVendor = caser.String(si.OS.Vendor)
 	osi.OSVersion = si.OS.Version
 	osi.OSRelease = si.OS.Release
 	osi.OSArch = si.Kernel.Architecture
 	osi.Kernel = si.Kernel.Release
 
+	// Parse additional fields from /etc/os-release
+	osRelease := parseOSRelease()
+	if cpe, ok := osRelease["CPE_NAME"]; ok {
+		osi.CPE = cpe
+	}
+	// Get codename from VERSION or VERSION_CODENAME
+	if codename, ok := osRelease["VERSION_CODENAME"]; ok {
+		osi.Codename = codename
+	} else if version, ok := osRelease["VERSION"]; ok {
+		// Extract codename from VERSION like "9.5 (Blue Onyx)" or "22.04.3 LTS (Jammy Jellyfish)"
+		if start := strings.Index(version, "("); start != -1 {
+			if end := strings.Index(version, ")"); end > start {
+				osi.Codename = version[start+1 : end]
+			}
+		}
+	}
+
 	return osi
 }
 
+// parseOSRelease reads /etc/os-release and returns key-value pairs
+func parseOSRelease() map[string]string {
+	result := make(map[string]string)
+
+	file, err := os.Open("/etc/os-release")
+	if err != nil {
+		return result
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if idx := strings.Index(line, "="); idx != -1 {
+			key := line[:idx]
+			value := line[idx+1:]
+			// Remove quotes if present
+			value = strings.Trim(value, "\"'")
+			result[key] = value
+		}
+	}
+
+	return result
+}
+
 func PrintOSInfo(osi OSInfo) {
-	fmt.Println("hostname   :", string(osi.Hostname))
-	fmt.Println("machine id :", string(osi.MachineID))
-	fmt.Println("OS name    :", string(osi.OSName))
-	fmt.Println("OS vendor  :", string(osi.OSVendor))
-	fmt.Println("OS version :", string(osi.OSVersion))
-	fmt.Println("OS release :", string(osi.OSRelease))
-	fmt.Println("OS arch    :", string(osi.OSArch))
-	fmt.Println("Kernel     :", string(osi.Kernel))
+	fmt.Println("hostname   :", osi.Hostname)
+	fmt.Println("machine id :", osi.MachineID)
+	fmt.Println("OS name    :", osi.OSName)
+	fmt.Println("OS vendor  :", osi.OSVendor)
+	fmt.Println("OS version :", osi.OSVersion)
+	fmt.Println("OS release :", osi.OSRelease)
+	fmt.Println("OS arch    :", osi.OSArch)
+	fmt.Println("Kernel     :", osi.Kernel)
+	if osi.CPE != "" {
+		fmt.Println("CPE        :", osi.CPE)
+	}
+	if osi.Codename != "" {
+		fmt.Println("Codename   :", osi.Codename)
+	}
 }

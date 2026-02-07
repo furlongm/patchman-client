@@ -2,9 +2,9 @@ package packages
 
 import (
 	"fmt"
-	"github.com/furlongm/patchman-client-go/lib/util"
-	"log"
 	"strings"
+
+	"github.com/furlongm/patchman-client/go/lib/util"
 )
 
 type RPM struct {
@@ -26,8 +26,10 @@ func PrintRPM(rpm RPM) {
 func GetInstalledRPMs() ([]RPM, error) {
 	cmd, err := util.RunCommand("rpm", "-qa", "--queryformat", "%{NAME} %{EPOCH} %{VERSION} %{RELEASE} %{ARCH}\n")
 	if err != nil {
-		log.Fatal(err)
-		return nil, err
+		return nil, fmt.Errorf("failed to query RPM database: %w", err)
+	}
+	if cmd == nil {
+		return nil, nil // rpm not available
 	}
 	rpms := []RPM{}
 	for _, line := range strings.Split(string(cmd), "\n") {

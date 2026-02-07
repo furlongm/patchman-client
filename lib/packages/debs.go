@@ -2,11 +2,11 @@ package packages
 
 import (
 	"fmt"
-	"github.com/furlongm/patchman-client-go/lib/util"
-	"github.com/knqyf263/go-deb-version"
-	"log"
 	"log/slog"
 	"strings"
+
+	"github.com/furlongm/patchman-client/go/lib/util"
+	"github.com/knqyf263/go-deb-version"
 )
 
 type DEB struct {
@@ -33,8 +33,10 @@ func PrintDEB(deb DEB) {
 func GetInstalledDEBs() ([]DEB, error) {
 	cmd, err := util.RunCommand("dpkg-query", "-W", "--showformat", "${Status}|${Package}|${Version}|${Architecture}\n")
 	if err != nil {
-		log.Fatal(err)
-		return nil, err
+		return nil, fmt.Errorf("failed to query dpkg database: %w", err)
+	}
+	if cmd == nil {
+		return nil, nil // dpkg-query not available
 	}
 	debs := []DEB{}
 	for _, line := range strings.Split(string(cmd), "\n") {

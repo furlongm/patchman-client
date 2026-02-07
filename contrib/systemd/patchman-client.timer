@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Patchman Client daily
+Documentation=https://github.com/furlongm/patchman
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=3600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

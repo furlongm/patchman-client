@@ -16,7 +16,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 package main
 
-import "github.com/furlongm/patchman-client-go/cmd"
+import "github.com/furlongm/patchman-client/go/cmd"
 
 func main() {
 	cmd.Execute()

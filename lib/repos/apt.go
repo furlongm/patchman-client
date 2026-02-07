@@ -2,13 +2,14 @@ package repos
 
 import (
 	"fmt"
-	"github.com/furlongm/patchman-client-go/lib/si"
-	"github.com/furlongm/patchman-client-go/lib/util"
-	"github.com/jedib0t/go-pretty/v6/table"
-	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/furlongm/patchman-client/go/lib/si"
+	"github.com/furlongm/patchman-client/go/lib/util"
+	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 type AptRepo struct {
@@ -43,15 +44,16 @@ func ConstructAptRepoURL(url string, components []string) string {
 	if components[1] != "Packages" {
 		repo_url += "/binary-" + components[1]
 	}
-	fmt.Println(repo_url)
 	return repo_url
 }
 
 func GetAptRepos(os_info si.OSInfo) ([]AptRepo, error) {
 	cmd, err := util.RunCommand("apt-cache", "policy")
 	if err != nil {
-		log.Fatal(err)
-		return nil, err
+		return nil, fmt.Errorf("failed to run apt-cache policy: %w", err)
+	}
+	if cmd == nil {
+		return nil, nil // apt-cache not available
 	}
 
 	apt_repos := []AptRepo{}
@@ -69,7 +71,10 @@ func GetAptRepos(os_info si.OSInfo) ([]AptRepo, error) {
 		if strings.HasPrefix(v[2], "mirror+file:/") {
 			mirror_file := strings.Replace(v[2], "mirror+file:", "", 1)
 			content, err := os.ReadFile(mirror_file)
-			util.CheckError(err)
+			if err != nil {
+				slog.Warn("failed to read mirror file", "file", mirror_file, "error", err)
+				continue
+			}
 			for _, mirror := range strings.Split(string(content), "\n") {
 				if mirror != "" {
 					repo_url := ConstructAptRepoURL(mirror, v[3:])

@@ -3,11 +3,11 @@ package repos
 import (
 	"encoding/xml"
 	"fmt"
-	"github.com/furlongm/patchman-client-go/lib/util"
-	"github.com/jedib0t/go-pretty/v6/table"
-	"log"
 	"os"
 	"slices"
+
+	"github.com/furlongm/patchman-client/go/lib/util"
+	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 type ZyppXMLStream struct {
@@ -54,8 +54,10 @@ func PrintZyppReposTable(repos []ZyppRepo) {
 func GetZyppRepos() ([]ZyppRepo, error) {
 	cmd, err := util.RunCommand("zypper", "-x", "lr")
 	if err != nil {
-		log.Fatal(err)
-		return nil, err
+		return nil, fmt.Errorf("failed to run zypper: %w", err)
+	}
+	if cmd == nil {
+		return nil, nil // zypper not available
 	}
 	var zypp_xml_stream ZyppXMLStream
 	xml.Unmarshal(cmd, &zypp_xml_stream)
