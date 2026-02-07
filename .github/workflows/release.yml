@@ -75,8 +75,6 @@ jobs:
         run: git config --global --add safe.directory $GITHUB_WORKSPACE
       - name: Get version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-      - name: Update VERSION.txt
-        run: echo "${{ env.VERSION }}" > VERSION.txt
       - name: Build deb packages
         run: |
           dpkg-buildpackage -us -uc -b
@@ -108,13 +106,11 @@ jobs:
         run: git config --global --add safe.directory $GITHUB_WORKSPACE
       - name: Get version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-      - name: Update VERSION.txt
-        run: echo "${{ env.VERSION }}" > VERSION.txt
       - name: Build rpm packages
         run: |
           mkdir -p ~/rpmbuild/{SOURCES,SPECS}
           tar czf ~/rpmbuild/SOURCES/patchman-client-${{ env.VERSION }}.tar.gz --transform "s,^,patchman-client-${{ env.VERSION }}/," .
-          rpmbuild -bb patchman-client.spec
+          rpmbuild -bb --define "version ${{ env.VERSION }}" patchman-client.spec
       - name: Upload rpm packages
         uses: softprops/action-gh-release@v2
         with:
@@ -129,17 +125,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Get version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-      - name: Update version in pyproject.toml
-        working-directory: python
-        run: |
-          sed -i "s/^version = .*/version = \"${{ env.VERSION }}\"/" pyproject.toml
       - name: Install build tools
-        run: pip install build twine
+        run: pip install build twine setuptools-scm
       - name: Build wheel and sdist
         working-directory: python
         run: python -m build

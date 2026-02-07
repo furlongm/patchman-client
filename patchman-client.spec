@@ -1,5 +1,5 @@
 Name:           patchman-client
-Version:        %(cat VERSION.txt)
+Version:        %{?version}%{!?version:%(git describe --tags --always 2>/dev/null | sed 's/^v//' || echo "0.0.0")}
 Release:        1%{?dist}
 Summary:        Patchman client for reporting system packages
 License:        GPLv3
@@ -16,13 +16,15 @@ the client implementations (bash, python, or go).
 
 %package bash
 Summary:        Patchman client - bash implementation
-Requires:       curl coreutils gawk jq
+Requires:       bash curl coreutils gawk grep sed
+Recommends:     jq
 Provides:       patchman-client-impl
 
 %description bash
 Patchman client sends system package information to a patchman server.
 This package provides the bash implementation of the patchman client.
 It is the most tested and recommended implementation.
+jq is recommended for protocol 2 (REST/JSON) support.
 
 %package python
 Summary:        Patchman client - Python implementation
@@ -42,6 +44,7 @@ Provides:       patchman-client-impl
 Patchman client sends system package information to a patchman server.
 This package provides the Go implementation of the patchman client.
 It is a compiled binary with no runtime dependencies.
+It uses the REST API (protocol 2) only.
 
 %prep
 %autosetup

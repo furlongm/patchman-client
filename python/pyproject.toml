@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "patchman-client"
-version = "4.0.8"
+dynamic = ["version"]
 description = "Patchman client for reporting system packages and updates"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -50,3 +50,7 @@ patchman-client = "patchman_client.client:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["patchman_client*"]
+
+[tool.setuptools_scm]
+root = ".."
+version_file = "patchman_client/_version.py"

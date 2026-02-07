@@ -2,53 +2,77 @@
 
 Patchman client sends system package information to a [Patchman](https://github.com/furlongm/patchman) server.
 
+Patchman clients send a list of installed packages and enabled repositories to
+the Patchman server. The Patchman server updates its package list for each
+repository and determines which hosts require updates, and whether those updates
+are normal or security updates.
+
 ## Implementations
 
 Three client implementations are available:
 
-| Implementation | Description | Dependencies |
-|---------------|-------------|--------------|
-| **Bash** (default) | Most tested, recommended | curl, awk, jq |
-| **Python** | REST API only (protocol 2) | Python 3.6+, requests |
-| **Go** | Compiled binary | None |
+| Implementation | Description | Protocol | Dependencies |
+|---------------|-------------|----------|--------------|
+| **bash** (default) | Most tested, recommended | 1 (form) or 2 (REST) | bash, curl, awk, grep, sed |
+| **python** | REST API only | 2 (REST) | Python 3.6+, requests |
+| **go** | Compiled binary | 2 (REST) | None |
 
 ## Installation
 
 ### Debian/Ubuntu
 
+Add the repository and install:
+
 ```bash
-# Install with bash client (default)
-apt install patchman-client patchman-client-bash
+# Add repository (TODO: update with actual repo URL)
+echo "deb https://packagecloud.io/furlongm/patchman/any/ any main" | sudo tee /etc/apt/sources.list.d/patchman.list
+curl -fsSL https://packagecloud.io/furlongm/patchman/gpgkey | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/patchman.gpg
+sudo apt update
 
-# Or with python client
-apt install patchman-client patchman-client-python
+# Install (pulls in bash client by default)
+sudo apt install patchman-client
 
-# Or with go client
-apt install patchman-client patchman-client-go
+# Or explicitly choose an implementation
+sudo apt install patchman-client patchman-client-bash
+sudo apt install patchman-client patchman-client-python
+sudo apt install patchman-client patchman-client-go
 ```
 
 ### RHEL/Fedora/CentOS
 
-```bash
-# Install with bash client (default)
-dnf install patchman-client patchman-client-bash
+Add the repository and install:
 
-# Or with python/go client
-dnf install patchman-client patchman-client-python
-dnf install patchman-client patchman-client-go
+```bash
+# Add repository (TODO: update with actual repo URL)
+sudo tee /etc/yum.repos.d/patchman.repo << 'EOF'
+[patchman]
+name=Patchman
+baseurl=https://packagecloud.io/furlongm/patchman/el/$releasever/$basearch
+gpgcheck=1
+gpgkey=https://packagecloud.io/furlongm/patchman/gpgkey
+enabled=1
+EOF
+
+# Install (pulls in bash client by default)
+sudo dnf install patchman-client
+
+# Or explicitly choose an implementation
+sudo dnf install patchman-client patchman-client-bash
+sudo dnf install patchman-client patchman-client-python
+sudo dnf install patchman-client patchman-client-go
 ```
 
 ### Arch Linux
 
 ```bash
-# Install from AUR or build from source
-makepkg -si
+# Install from AUR
+yay -S patchman-client
 ```
 
 ### Gentoo
 
 ```bash
-# Install from overlay or build from source
+# Install from overlay
 emerge patchman-client
 ```
 
@@ -78,8 +102,8 @@ curl_options="--insecure --connect-timeout 60 --max-time 300"
 # Space delimited tags to send
 tags="Server"
 
-# Protocol version (1 = text, 2 = json)
-# Protocol 2 requires jq (bash) or is default (python/go)
+# Protocol version (1 = form data, 2 = REST/JSON)
+# Protocol 2 requires jq for bash client
 protocol=1
 
 # API key for protocol 2 authentication
@@ -129,12 +153,12 @@ update-alternatives --set patchman-client /usr/sbin/patchman-client-go
 
 The `patchman-client` meta-package installs hooks for automatic reporting after package changes:
 
-- **APT** (Debian/Ubuntu): `/etc/apt/apt.conf.d/05patchman`
-- **DNF** (Fedora/RHEL 8+): `/etc/dnf/plugins/post-transaction-actions.d/patchman.action`
-- **YUM** (RHEL 7): `/etc/yum/pluginconf.d/patchman.conf`
-- **Zypper** (openSUSE/SLES): zypper system plugin
-- **Pacman** (Arch): `/etc/pacman.d/hooks/patchman.hook`
-- **Portage** (Gentoo): `/etc/portage/bashrc`
+- **apt** (Debian/Ubuntu): `/etc/apt/apt.conf.d/05patchman`
+- **dnf** (Fedora/RHEL 8+): `/etc/dnf/plugins/post-transaction-actions.d/patchman.action`
+- **yum** (RHEL 7): `/etc/yum/pluginconf.d/patchman.conf`
+- **zypper** (openSUSE/SLES): zypper system plugin
+- **pacman** (Arch): `/etc/pacman.d/hooks/patchman.hook`
+- **portage** (Gentoo): `/etc/portage/bashrc`
 
 ## Systemd Timer
 

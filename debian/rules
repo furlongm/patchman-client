@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 export DH_VERBOSE = 1
-export VERSION = $(shell cat VERSION.txt)
+export VERSION = $(shell git describe --tags --always 2>/dev/null | sed 's/^v//' || echo "0.0.0")
 
 %:
 	dh $@ --with python3
