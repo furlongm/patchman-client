@@ -1,0 +1,17 @@
+#!/bin/bash
+#
+# Gentoo Portage post-install hook for patchman
+# Place in /etc/portage/bashrc or source from it
+#
+# Copyright 2016-2026 Marcus Furlong <furlongm@gmail.com>
+# License: GPL-3.0
+
+case "${EBUILD_PHASE}" in
+    postinst|postrm)
+        CLIENT=/usr/sbin/patchman-client
+        if [ -x "$CLIENT" ]; then
+            echo "Sending report to patchman server..."
+            $CLIENT --post-hook || true
+        fi
+        ;;
+esac

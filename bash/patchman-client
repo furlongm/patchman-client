@@ -14,6 +14,35 @@ repo_check=true
 tags=''
 api_key=''
 
+# Handle --post-hook for package manager hooks
+# Checks config and provides helpful error messages
+if [ "$1" = "--post-hook" ]; then
+    # Check if config file exists
+    if [ ! -f "$conf" ]; then
+        echo "patchman-client: Config file not found: $conf" >&2
+        echo "  Create the config file and set server= to your patchman server." >&2
+        exit 1
+    fi
+
+    # Check if server is configured (not example.com)
+    if grep -qE '^\s*server\s*=.*patchman\.example\.com' "$conf" 2>/dev/null; then
+        echo "patchman-client: Server not configured." >&2
+        echo "  Edit $conf and set server= to your patchman server URL." >&2
+        exit 1
+    fi
+
+    # Check if server is set at all
+    if ! grep -qE '^\s*server\s*=' "$conf" 2>/dev/null; then
+        echo "patchman-client: Server not configured." >&2
+        echo "  Edit $conf and add: server=https://your-patchman-server.example.com" >&2
+        exit 1
+    fi
+
+    # Run normally with -n (no repo check for hooks)
+    echo "Sending report to patchman server..."
+    exec "$0" -n
+fi
+
 usage() {
     echo "${0} [-v] [-d] [-n] [-u] [-r] [-s SERVER] [-c FILE] [-t TAGS] [-h HOSTNAME] [-p PROTOCOL] [-k API_KEY]"
     echo "-v: verbose output (default is silent)"
