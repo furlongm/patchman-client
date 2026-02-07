@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "patchman-client"
 dynamic = ["version"]
 description = "Patchman client for reporting system packages and updates"
-readme = "README.md"
-license = {text = "GPL-3.0-or-later"}
+readme = {file = "../README.md", content-type = "text/markdown"}
+license = "GPL-3.0-or-later"
 authors = [
     {name = "Marcus Furlong", email = "furlongm@gmail.com"}
 ]
@@ -15,7 +15,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.6",
