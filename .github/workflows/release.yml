@@ -1,0 +1,151 @@
+name: Create release and upload assets
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-go-binaries:
+    needs: create-release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Get version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Build
+        working-directory: go
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags "-X github.com/furlongm/patchman-client/go/lib/report.Version=${{ env.VERSION }}" \
+            -o ../patchman-client-go-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd
+      - name: Upload binary
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: patchman-client-go-${{ matrix.goos }}-${{ matrix.goarch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-deb-packages:
+    needs: create-release
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt update
+          export DEBIAN_FRONTEND=noninteractive
+          apt -y install debhelper dh-golang dh-python python3 golang-go git
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure git
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
+      - name: Get version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Update VERSION.txt
+        run: echo "${{ env.VERSION }}" > VERSION.txt
+      - name: Build deb packages
+        run: |
+          dpkg-buildpackage -us -uc -b
+      - name: Upload deb packages
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            ../patchman-client_${{ env.VERSION }}-1_all.deb
+            ../patchman-client-bash_${{ env.VERSION }}-1_all.deb
+            ../patchman-client-python_${{ env.VERSION }}-1_all.deb
+            ../patchman-client-go_${{ env.VERSION }}-1_*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-rpm-packages:
+    needs: create-release
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/centos/centos:stream10
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf -y install rpm-build golang python3-devel git
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure git
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
+      - name: Get version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Update VERSION.txt
+        run: echo "${{ env.VERSION }}" > VERSION.txt
+      - name: Build rpm packages
+        run: |
+          mkdir -p ~/rpmbuild/{SOURCES,SPECS}
+          tar czf ~/rpmbuild/SOURCES/patchman-client-${{ env.VERSION }}.tar.gz --transform "s,^,patchman-client-${{ env.VERSION }}/," .
+          rpmbuild -bb patchman-client.spec
+      - name: Upload rpm packages
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            ~/rpmbuild/RPMS/*/patchman-client*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-pypi:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Get version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Update version in pyproject.toml
+        working-directory: python
+        run: |
+          sed -i "s/^version = .*/version = \"${{ env.VERSION }}\"/" pyproject.toml
+      - name: Install build tools
+        run: pip install build twine
+      - name: Build wheel and sdist
+        working-directory: python
+        run: python -m build
+      - name: Publish to PyPI
+        working-directory: python
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: twine upload dist/*
