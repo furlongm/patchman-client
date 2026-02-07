@@ -111,15 +111,16 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
       - name: Build rpm packages
         run: |
-          mkdir -p ~/rpmbuild/{SOURCES,SPECS}
-          tar czf ~/rpmbuild/SOURCES/patchman-client-${{ env.VERSION }}.tar.gz --transform "s,^,patchman-client-${{ env.VERSION }}/," .
+          mkdir -p $HOME/rpmbuild/{SOURCES,SPECS}
+          tar czf $HOME/rpmbuild/SOURCES/patchman-client-${{ env.VERSION }}.tar.gz --transform "s,^,patchman-client-${{ env.VERSION }}/," .
           rpmbuild -bb --define "version ${{ env.VERSION }}" patchman-client.spec
+      - name: Copy RPMs to workspace
+        run: cp $HOME/rpmbuild/RPMS/*/*.rpm .
       - name: Upload rpm packages
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: |
-            ~/rpmbuild/RPMS/*/patchman-client*.rpm
+          files: "*.rpm"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
