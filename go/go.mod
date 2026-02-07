@@ -1,8 +1,8 @@
 module github.com/furlongm/patchman-client/go
 
-go 1.22
+go 1.25
 
-toolchain go1.22.4
+toolchain go1.25.7
 
 require (
 	github.com/jedib0t/go-pretty/v6 v6.5.9
