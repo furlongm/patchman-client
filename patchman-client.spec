@@ -9,6 +9,9 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  golang >= 1.21
 BuildRequires:  python3-devel
 
+# Disable debuginfo - Go binaries don't have traditional debug symbols
+%global debug_package %{nil}
+
 %description
 Patchman client sends system package information to a patchman server.
 This meta-package installs package manager hooks and depends on one of
@@ -120,7 +123,7 @@ fi
 %{_sbindir}/patchman-client-go
 
 %changelog
-* Fri Feb 07 2026 Marcus Furlong <furlongm@gmail.com> - 4.0.8-1
+* Sat Feb 07 2026 Marcus Furlong <furlongm@gmail.com> - 4.0.8-1
 - Initial release of unified patchman-client package
 - Includes bash, python, and go implementations
 - Uses alternatives for switching implementations
