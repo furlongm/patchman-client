@@ -13,10 +13,38 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Get version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -v "^${{ github.ref_name }}$" | head -1)
+          echo "Previous tag: $PREV_TAG"
+          
+          # Generate changelog from commits
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log --pretty=format:"  * %s" $PREV_TAG..${{ github.ref_name }} --no-merges | head -50)
+          else
+            CHANGES="  * Initial release"
+          fi
+          
+          # Create release body
+          {
+            echo "## Changes in ${{ github.ref_name }}"
+            echo ""
+            echo "$CHANGES"
+          } > release_body.md
+          
+          # Output for other jobs (escape newlines)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat release_body.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       - name: Create release
         id: create_release
         uses: softprops/action-gh-release@v2
@@ -25,7 +53,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          body_path: release_body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -71,7 +99,7 @@ jobs:
         run: |
           apt update
           export DEBIAN_FRONTEND=noninteractive
-          apt -y install debhelper dh-golang dh-python python3 golang-go git
+          apt -y install debhelper dh-golang dh-python python3 golang-go git devscripts
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -79,6 +107,31 @@ jobs:
         run: git config --global --add safe.directory $GITHUB_WORKSPACE
       - name: Get version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Generate debian changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -v "^${{ github.ref_name }}$" | head -1)
+          
+          # Generate changelog entry
+          cat > debian/changelog << EOF
+          patchman-client (${{ env.VERSION }}-1) stable; urgency=medium
+
+          EOF
+          
+          # Add commit messages
+          if [ -n "$PREV_TAG" ]; then
+            git log --pretty=format:"  * %s" $PREV_TAG..${{ github.ref_name }} --no-merges | head -20 >> debian/changelog
+          else
+            echo "  * Initial release" >> debian/changelog
+          fi
+          
+          # Add footer
+          cat >> debian/changelog << EOF
+
+           -- Marcus Furlong <furlongm@gmail.com>  $(date -R)
+          EOF
+          
+          cat debian/changelog
       - name: Build deb packages
         run: |
           dpkg-buildpackage -us -uc -b
