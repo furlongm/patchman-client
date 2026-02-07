@@ -120,24 +120,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  publish-pypi:
-    needs: create-release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install build tools
-        run: pip install build twine setuptools-scm
-      - name: Build wheel and sdist
-        working-directory: python
-        run: python -m build
-      - name: Publish to PyPI
-        working-directory: python
-        env:
-          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: twine upload dist/*
+  # Commented out - requires PYPI_USERNAME and PYPI_PASSWORD secrets
+  # publish-pypi:
+  #   needs: create-release
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.12'
+  #     - name: Install build tools
+  #       run: pip install build twine setuptools-scm
+  #     - name: Build wheel and sdist
+  #       working-directory: python
+  #       run: python -m build
+  #     - name: Publish to PyPI
+  #       working-directory: python
+  #       env:
+  #         TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+  #         TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+  #       run: twine upload dist/*
