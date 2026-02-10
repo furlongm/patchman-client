@@ -19,73 +19,67 @@ Three client implementations are available:
 
 ## Installation
 
-### Debian/Ubuntu
-
-Add the repository and install:
+### Ubuntu 24.04 (noble)
 
 ```bash
-# Add repository (TODO: update with actual repo URL)
-echo "deb https://packagecloud.io/furlongm/patchman/any/ any main" | sudo tee /etc/apt/sources.list.d/patchman.list
-curl -fsSL https://packagecloud.io/furlongm/patchman/gpgkey | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/patchman.gpg
-sudo apt update
+curl -sS https://repo.openbytes.ie/openbytes-1.gpg | tee /usr/share/keyrings/openbytes.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/openbytes.gpg] https://repo.openbytes.ie/patchman/ubuntu noble-backports main" > /etc/apt/sources.list.d/patchman.list
+apt update
+apt -y install  patchman-client
 
-# Install (pulls in bash client by default)
-sudo apt install patchman-client
-
-# Or explicitly choose an implementation
-sudo apt install patchman-client patchman-client-bash
-sudo apt install patchman-client patchman-client-python
-sudo apt install patchman-client patchman-client-go
+# or explicitly choose an implementation
+apt -y install patchman-client-bash
+apt -y install patchman-client-python
+apt -y install patchman-client-go
 ```
 
-### RHEL/Fedora/CentOS
+### Debian 13 (trixie)
+```bash
+curl -sS https://repo.openbytes.ie/openbytes-1.gpg | tee /usr/share/keyrings/openbytes.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/openbytes.gpg] https://repo.openbytes.ie/patchman/debian trixie main" > /etc/apt/sources.list.d/patchman.list
+apt update
+apt -y install  patchman-client
 
-Add the repository and install:
+# or explicitly choose an implementation
+apt -y install patchman-client-bash
+apt -y install patchman-client-python
+apt -y install patchman-client-go
+```
+
+### RHEL/Rocky/Alma/Suse
 
 ```bash
-# Add repository (TODO: update with actual repo URL)
-sudo tee /etc/yum.repos.d/patchman.repo << 'EOF'
+curl -sS https://repo.openbytes.ie/openbytes-2.gpg > /etc/pki/rpm-gpg/RPM-GPG-KEY-openbytes
+cat <<EOF >> /etc/yum.repos.d/openbytes.repo
 [patchman]
 name=Patchman
-baseurl=https://packagecloud.io/furlongm/patchman/el/$releasever/$basearch
+baseurl=https://repo.openbytes.ie/patchman/el10
 gpgcheck=1
-gpgkey=https://packagecloud.io/furlongm/patchman/gpgkey
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-openbytes
 enabled=1
 EOF
+dnf -y install patchman-client
 
-# Install (pulls in bash client by default)
-sudo dnf install patchman-client
-
-# Or explicitly choose an implementation
-sudo dnf install patchman-client patchman-client-bash
-sudo dnf install patchman-client patchman-client-python
-sudo dnf install patchman-client patchman-client-go
+# or explicitly choose an implementation
+dnf -y install patchman-client-bash
+dnf -y install patchman-client-python
+dnf -y install patchman-client-go
 ```
 
-### Arch Linux
+### Source (Go)
 
 ```bash
-# Install from AUR
-yay -S patchman-client
+cd go && go build -o patchman-client ./cmd
 ```
 
-### Gentoo
+### From GitHub Releases
+
+Download pre-built Go binaries from [GitHub Releases](https://github.com/furlongm/patchman-client/releases):
 
 ```bash
-# Install from overlay
-emerge patchman-client
-```
-
-### From Source (Go)
-
-```bash
-go install github.com/furlongm/patchman-client/go/cmd@latest
-```
-
-### From PyPI (Python)
-
-```bash
-pip install patchman-client
+# Download and install (amd64)
+curl -LO https://github.com/furlongm/patchman-client/releases/latest/download/patchman-client-go-linux-amd64
+install -m 755 patchman-client-go-linux-amd64 /usr/sbin/patchman-client
 ```
 
 ## Configuration
@@ -93,17 +87,16 @@ pip install patchman-client
 Edit `/etc/patchman/patchman-client.conf`:
 
 ```ini
-# Patchman server URL
+# patchman server URL
 server=https://patchman.example.com
 
-# Options to curl (bash client only)
+# options to curl (bash client only)
 curl_options="--insecure --connect-timeout 60 --max-time 300"
 
-# Space delimited tags to send
-tags="Server"
+# space delimited tags to send
+tags="server"
 
-# Protocol version (1 = form data, 2 = REST/JSON)
-# Protocol 2 requires jq for bash client
+# protocol version (1 = text/form data, 2 = REST API)
 protocol=1
 
 # API key for protocol 2 authentication
@@ -127,9 +120,6 @@ patchman-client -n
 
 # Override server
 patchman-client -s https://patchman.example.com
-
-# Send with tags
-patchman-client -t web,production
 ```
 
 ## Switching Implementations
@@ -156,13 +146,13 @@ The `patchman-client` meta-package installs hooks for automatic reporting after 
 - **apt** (Debian/Ubuntu): `/etc/apt/apt.conf.d/05patchman`
 - **dnf** (Fedora/RHEL 8+): `/etc/dnf/plugins/post-transaction-actions.d/patchman.action`
 - **yum** (RHEL 7): `/etc/yum/pluginconf.d/patchman.conf`
-- **zypper** (openSUSE/SLES): zypper system plugin
+- **zypper** (openSUSE/SLES): `/usr/lib/zypp/plugins/commit/patchman.py`
 - **pacman** (Arch): `/etc/pacman.d/hooks/patchman.hook`
 - **portage** (Gentoo): `/etc/portage/bashrc`
 
 ## Systemd Timer
 
-A systemd timer is included for periodic reporting (disabled by default):
+A systemd timer is included for periodic reporting (disabled by default, hooks enabled by default):
 
 ```bash
 # Enable daily reports
