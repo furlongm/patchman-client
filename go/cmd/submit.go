@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/furlongm/patchman-client/go/lib/packages"
@@ -52,6 +53,7 @@ The server URL and API key can be provided via:
 		caFile := viper.GetString("ca_file")
 		noRepoCheck := viper.GetBool("no_repo_check")
 		postHook := viper.GetBool("post_hook")
+		localUpdates := viper.GetBool("local_updates")
 
 		// --post-hook: validate config and force no-repo-check
 		if postHook {
@@ -199,6 +201,26 @@ The server URL and API key can be provided via:
 			fmt.Println("Skipping repository collection (--no-repo-check)")
 		}
 
+		// Auto-enable local_updates if CDN repos detected (like bash client)
+		if !localUpdates {
+			for _, repo := range rpt.Repos {
+				for _, url := range repo.URLs {
+					if strings.Contains(url, "cdn") && strings.Contains(url, "redhat.com/") ||
+						strings.Contains(url, "/XMLRPC") ||
+						strings.HasPrefix(url, "https://updates.suse.com/") {
+						localUpdates = true
+						if verbose {
+							fmt.Println("CDN repo detected, enabling local update collection")
+						}
+						break
+					}
+				}
+				if localUpdates {
+					break
+				}
+			}
+		}
+
 		// DNF modules
 		dnfModules, err := packages.GetInstalledDNFModules()
 		if err == nil && len(dnfModules) > 0 {
@@ -208,59 +230,61 @@ The server URL and API key can be provided via:
 			rpt.AddDNFModules(dnfModules)
 		}
 
-		// Collect available updates
-		if verbose {
-			fmt.Println("Collecting available updates...")
-		}
+		// Collect available updates (only with -u/--local-updates)
+		if localUpdates {
+			if verbose {
+				fmt.Println("Collecting available updates...")
+			}
 
-		// Try DNF/YUM updates first
-		secUpdates, bugUpdates, err := updates.GetDNFUpdates()
-		if err == nil && (len(secUpdates) > 0 || len(bugUpdates) > 0) {
-			if len(secUpdates) > 0 {
-				if verbose {
-					fmt.Printf("  Found %d security updates (DNF)\n", len(secUpdates))
+			// Try DNF/YUM updates first
+			secUpdates, bugUpdates, err := updates.GetDNFUpdates()
+			if err == nil && (len(secUpdates) > 0 || len(bugUpdates) > 0) {
+				if len(secUpdates) > 0 {
+					if verbose {
+						fmt.Printf("  Found %d security updates (DNF)\n", len(secUpdates))
+					}
+					rpt.AddSecurityUpdates(secUpdates)
 				}
-				rpt.AddSecurityUpdates(secUpdates)
-			}
-			if len(bugUpdates) > 0 {
-				if verbose {
-					fmt.Printf("  Found %d bugfix updates (DNF)\n", len(bugUpdates))
+				if len(bugUpdates) > 0 {
+					if verbose {
+						fmt.Printf("  Found %d bugfix updates (DNF)\n", len(bugUpdates))
+					}
+					rpt.AddBugfixUpdates(bugUpdates)
 				}
-				rpt.AddBugfixUpdates(bugUpdates)
 			}
-		}
 
-		// Try Zypper updates
-		secUpdates, bugUpdates, err = updates.GetZypperUpdates()
-		if err == nil && (len(secUpdates) > 0 || len(bugUpdates) > 0) {
-			if len(secUpdates) > 0 {
-				if verbose {
-					fmt.Printf("  Found %d security updates (Zypper)\n", len(secUpdates))
+			// Try Zypper updates
+			secUpdates, bugUpdates, err = updates.GetZypperUpdates()
+			if err == nil && (len(secUpdates) > 0 || len(bugUpdates) > 0) {
+				if len(secUpdates) > 0 {
+					if verbose {
+						fmt.Printf("  Found %d security updates (Zypper)\n", len(secUpdates))
+					}
+					rpt.AddSecurityUpdates(secUpdates)
 				}
-				rpt.AddSecurityUpdates(secUpdates)
-			}
-			if len(bugUpdates) > 0 {
-				if verbose {
-					fmt.Printf("  Found %d bugfix updates (Zypper)\n", len(bugUpdates))
+				if len(bugUpdates) > 0 {
+					if verbose {
+						fmt.Printf("  Found %d bugfix updates (Zypper)\n", len(bugUpdates))
+					}
+					rpt.AddBugfixUpdates(bugUpdates)
 				}
-				rpt.AddBugfixUpdates(bugUpdates)
 			}
-		}
 
-		// Try APT updates
-		secUpdates, bugUpdates, err = updates.GetAPTUpdates()
-		if err == nil && (len(secUpdates) > 0 || len(bugUpdates) > 0) {
-			if len(secUpdates) > 0 {
-				if verbose {
-					fmt.Printf("  Found %d security updates (APT)\n", len(secUpdates))
+			// Try APT updates
+			secUpdates, bugUpdates, err = updates.GetAPTUpdates()
+			if err == nil && (len(secUpdates) > 0 || len(bugUpdates) > 0) {
+				if len(secUpdates) > 0 {
+					if verbose {
+						fmt.Printf("  Found %d security updates (APT)\n", len(secUpdates))
+					}
+					rpt.AddSecurityUpdates(secUpdates)
 				}
-				rpt.AddSecurityUpdates(secUpdates)
-			}
-			if len(bugUpdates) > 0 {
-				if verbose {
-					fmt.Printf("  Found %d bugfix updates (APT)\n", len(bugUpdates))
+				if len(bugUpdates) > 0 {
+					if verbose {
+						fmt.Printf("  Found %d bugfix updates (APT)\n", len(bugUpdates))
+					}
+					rpt.AddBugfixUpdates(bugUpdates)
 				}
-				rpt.AddBugfixUpdates(bugUpdates)
 			}
 		}
 

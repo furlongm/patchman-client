@@ -453,6 +453,19 @@ class PatchmanClient:
         self._collect_gentoo_repos()
         self.log(f'Collected {len(self.repos)} repositories')
 
+        # Auto-enable local_updates if CDN repos detected (like bash client)
+        if not self.local_updates:
+            for repo in self.repos:
+                for url in repo.get('urls', []):
+                    if (re.search(r'https://cdn[^.]*\.redhat\.com/', url) or
+                            '/XMLRPC' in url or
+                            url.startswith('https://updates.suse.com/')):
+                        self.local_updates = True
+                        self.log('CDN repo detected, enabling local update collection')
+                        break
+                if self.local_updates:
+                    break
+
     def _collect_yum_repos(self) -> None:
         """Collect YUM/DNF repositories."""
         if not self._command_exists('yum'):
@@ -596,25 +609,50 @@ class PatchmanClient:
                         break
 
         # Parse apt-cache policy output
-        repo_pattern = re.compile(r'^\s*(\d+)\s+(https?://\S+)\s+(\S+)\s+(\S+)')
+        # Matches both http(s):// URLs and mirror+file: entries
+        repo_pattern = re.compile(
+            r'^\s*(\d+)\s+(https?://\S+|mirror\+file:\S+)\s+(\S+)\s+(\S+)',
+        )
+
+        mirror_entries = []
+        http_entries = []
 
         for line in stdout.splitlines():
             match = repo_pattern.match(line)
             if not match:
                 continue
 
-            priority, base_url, dist, component = match.groups()
-
             # Skip Translation entries
             if 'Translation' in line:
                 continue
 
-            # Build the full URL
+            priority, base_url, dist, component = match.groups()
+
+            if base_url.startswith('mirror+file:'):
+                mirror_entries.append((priority, base_url, dist, component))
+            else:
+                http_entries.append((priority, base_url, dist, component))
+
+        # Resolve mirror+file: entries by reading the local mirror list file
+        for priority, mirror_url, dist, component in mirror_entries:
+            mirror_path = mirror_url.replace('mirror+file:', '')
+            if os.path.isfile(mirror_path):
+                try:
+                    with open(mirror_path) as f:
+                        for url_line in f:
+                            url = url_line.strip()
+                            if url and url.startswith(('http://', 'https://')):
+                                http_entries.append(
+                                    (priority, url, dist, component),
+                                )
+                except OSError:
+                    pass
+
+        # Build repo entries from resolved URLs
+        for priority, base_url, dist, component in http_entries:
             if component.endswith('Packages'):
-                # Non-dist repo format
                 url = f'{base_url}/{dist}'
             else:
-                # Standard dist repo format
                 url = f'{base_url}/dists/{dist}/binary-{self.arch}'
 
             repo_name = f'{os_name} {version_id} {self.arch} repo at {url}'
@@ -920,6 +958,7 @@ class PatchmanClient:
         if self.local_updates:
             self._collect_yum_updates()
             self._collect_zypper_updates()
+            self._collect_apt_updates()
 
         self.log(f'Collected {len(self.sec_updates)} security updates')
         self.log(f'Collected {len(self.bug_updates)} bug fix updates')
@@ -1032,6 +1071,43 @@ class PatchmanClient:
                 'arch': arch,
                 'repo': repo,
             })
+
+    def _collect_apt_updates(self) -> None:
+        """Collect updates from APT (apt list --upgradable)."""
+        if not self._command_exists('apt'):
+            return
+
+        self.log('Finding apt updates...')
+        rc, stdout, _ = self._run_command(['apt', 'list', '--upgradable'])
+
+        if rc != 0:
+            return
+
+        # Format: package/suite version arch [upgradable from: old-version]
+        # Example: curl/jammy-security 7.81.0-1ubuntu1.15 amd64 [upgradable from: ...]
+        update_pattern = re.compile(r'^([^/]+)/(\S+)\s+(\S+)\s+(\S+)')
+
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith('Listing'):
+                continue
+
+            match = update_pattern.match(line)
+            if not match:
+                continue
+
+            pkg_name, suite, version, arch = match.groups()
+
+            update = {
+                'name': pkg_name,
+                'version': version,
+                'arch': arch,
+            }
+
+            if 'security' in suite.lower():
+                self.sec_updates.append(update)
+            else:
+                self.bug_updates.append(update)
 
     # -------------------------------------------------------------------------
     # Report Building and Submission
