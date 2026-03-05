@@ -2,6 +2,7 @@ package report
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/furlongm/patchman-client/go/lib/packages"
@@ -80,7 +81,7 @@ func TestAddYumRepos(t *testing.T) {
 		{ID: "appstream", Name: "AppStream", BaseURL: "http://mirror/appstream", Priority: 10, Enabled: true},
 	}
 
-	rpt.AddYumRepos(yumRepos)
+	rpt.AddYumRepos(yumRepos, "")
 
 	if len(rpt.Repos) != 2 {
 		t.Errorf("Expected 2 repos, got %d", len(rpt.Repos))
@@ -144,4 +145,67 @@ func TestCheckRebootRequired(t *testing.T) {
 	// Just check that it doesn't panic
 	result := CheckRebootRequired()
 	t.Logf("Reboot required: %v", result)
+}
+
+func TestAddYumReposCPEPrefix(t *testing.T) {
+	osInfo := si.OSInfo{Hostname: "test", OSArch: "x86_64"}
+	rpt := NewReport(osInfo)
+
+	yumRepos := []repos.YumRepo{
+		{ID: "baseos", Name: "BaseOS x86_64", BaseURL: "http://mirror/baseos", Priority: 0, Enabled: true},
+	}
+
+	rpt.AddYumRepos(yumRepos, "cpe:/o:rocky:rocky:10")
+
+	if rpt.Repos[0].ID != "cpe:/o:rocky:rocky:10-baseos" {
+		t.Errorf("Expected CPE-prefixed ID, got '%s'", rpt.Repos[0].ID)
+	}
+}
+
+func TestAddYumReposNoCPE(t *testing.T) {
+	osInfo := si.OSInfo{Hostname: "test", OSArch: "x86_64"}
+	rpt := NewReport(osInfo)
+
+	yumRepos := []repos.YumRepo{
+		{ID: "baseos", Name: "BaseOS x86_64", BaseURL: "http://mirror/baseos", Priority: 0, Enabled: true},
+	}
+
+	rpt.AddYumRepos(yumRepos, "")
+
+	if rpt.Repos[0].ID != "baseos" {
+		t.Errorf("Expected bare ID without CPE, got '%s'", rpt.Repos[0].ID)
+	}
+}
+
+func TestAddYumReposArchDedup(t *testing.T) {
+	osInfo := si.OSInfo{Hostname: "test", OSArch: "x86_64"}
+	rpt := NewReport(osInfo)
+
+	yumRepos := []repos.YumRepo{
+		{ID: "epel", Name: "EPEL - x86_64 x86_64", BaseURL: "http://mirror/epel", Priority: 0, Enabled: true},
+	}
+
+	rpt.AddYumRepos(yumRepos, "")
+
+	if strings.Contains(rpt.Repos[0].Name, "x86_64 x86_64") {
+		t.Errorf("Duplicate arch suffix not stripped: '%s'", rpt.Repos[0].Name)
+	}
+	if !strings.HasSuffix(rpt.Repos[0].Name, "x86_64") {
+		t.Errorf("Expected name to end with arch, got '%s'", rpt.Repos[0].Name)
+	}
+}
+
+func TestAddYumReposArchAppended(t *testing.T) {
+	osInfo := si.OSInfo{Hostname: "test", OSArch: "x86_64"}
+	rpt := NewReport(osInfo)
+
+	yumRepos := []repos.YumRepo{
+		{ID: "baseos", Name: "Rocky Linux 10 - BaseOS", BaseURL: "http://mirror/baseos", Priority: 0, Enabled: true},
+	}
+
+	rpt.AddYumRepos(yumRepos, "")
+
+	if !strings.Contains(rpt.Repos[0].Name, "x86_64") {
+		t.Errorf("Arch should be appended to name, got '%s'", rpt.Repos[0].Name)
+	}
 }

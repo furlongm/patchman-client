@@ -143,17 +143,31 @@ func (r *Report) AddDEBs(debs []packages.DEB) {
 	}
 }
 
-// AddYumRepos converts and adds YUM/DNF repositories to the report
-func (r *Report) AddYumRepos(yumRepos []repos.YumRepo) {
+// AddYumRepos converts and adds YUM/DNF repositories to the report.
+// cpeName is prepended to repo IDs for consistency with bash/python clients.
+func (r *Report) AddYumRepos(yumRepos []repos.YumRepo, cpeName string) {
 	for _, repo := range yumRepos {
 		urls := []string{}
 		if repo.BaseURL != "" {
 			urls = append(urls, repo.BaseURL)
 		}
+		repoID := repo.ID
+		if cpeName != "" {
+			repoID = cpeName + "-" + repoID
+		}
+		// Normalize repo name: strip duplicate " - arch arch" suffix
+		name := repo.Name
+		archSuffix := " - " + r.Arch + " " + r.Arch
+		if strings.HasSuffix(name, archSuffix) {
+			name = name[:len(name)-len(archSuffix)] + " " + r.Arch
+		}
+		if !strings.Contains(name, r.Arch) {
+			name = name + " " + r.Arch
+		}
 		r.Repos = append(r.Repos, Repo{
 			Type:     "rpm",
-			Name:     repo.Name,
-			ID:       repo.ID,
+			Name:     name,
+			ID:       repoID,
 			Priority: repo.Priority,
 			URLs:     urls,
 		})

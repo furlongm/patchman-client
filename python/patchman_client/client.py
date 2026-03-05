@@ -457,6 +457,10 @@ class PatchmanClient:
             return
 
         self.log('Finding yum repos...')
+
+        # Parse priorities from .repo files (yum repolist doesn't show them)
+        repo_priorities = self._parse_yum_priorities()
+
         rc, stdout, _ = self._run_command(
             ['yum', 'repolist', 'enabled', '--verbose'],
         )
@@ -479,6 +483,9 @@ class PatchmanClient:
                 repo_id = line.split(':', 1)[1].strip() if ':' in line else ''
                 # Remove any trailing /version info
                 repo_id = repo_id.split('/')[0]
+                # Look up priority from .repo files by name (matched later)
+                # Default yum priority is 99
+                priority = 99
                 # Prefix with CPE name if available
                 if self.cpe_name:
                     repo_id = f'{self.cpe_name}-{repo_id}'
@@ -486,7 +493,7 @@ class PatchmanClient:
                     'type': 'rpm',
                     'id': repo_id,
                     'name': '',
-                    'priority': 99,
+                    'priority': priority,
                     'urls': [],
                 }
                 urls = []
@@ -499,6 +506,9 @@ class PatchmanClient:
                 if self.arch not in name:
                     name = f'{name} {self.arch}'
                 current_repo['name'] = name
+                # Match priority by repo name (with arch appended)
+                if name in repo_priorities:
+                    current_repo['priority'] = repo_priorities[name]
 
             elif line.startswith('Repo-baseurl') and current_repo:
                 url = line.split(':', 1)[1].strip() if ':' in line else ''
@@ -527,6 +537,40 @@ class PatchmanClient:
         if current_repo.get('id'):
             current_repo['urls'] = urls
             self.repos.append(current_repo)
+
+    def _parse_yum_priorities(self) -> dict[str, int]:
+        """Parse priorities from /etc/yum.repos.d/*.repo files.
+
+        Returns a dict mapping 'repo name arch' to priority value.
+        The bash client does this with sed; we parse the .repo INI files.
+        """
+        import glob
+        priorities: dict[str, int] = {}
+        repo_files = glob.glob('/etc/yum.repos.d/*.repo')
+        current_name = ''
+        for repo_file in repo_files:
+            try:
+                with open(repo_file) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('name'):
+                            parts = line.split('=', 1)
+                            if len(parts) == 2:
+                                name = parts[1].strip()
+                                name = name.replace('$releasever', '')
+                                if self.arch not in name:
+                                    name = f'{name} {self.arch}'
+                                current_name = name
+                        elif line.startswith('priority') and current_name:
+                            parts = line.split('=', 1)
+                            if len(parts) == 2:
+                                try:
+                                    priorities[current_name] = int(parts[1].strip())
+                                except ValueError:
+                                    pass
+            except OSError:
+                continue
+        return priorities
 
     def _collect_apt_repos(self) -> None:
         """Collect APT repositories."""

@@ -121,7 +121,7 @@ The server URL and API key can be provided via:
 			if verbose {
 				fmt.Printf("  Found %d YUM/DNF repositories\n", len(yumRepos))
 			}
-			rpt.AddYumRepos(yumRepos)
+			rpt.AddYumRepos(yumRepos, osInfo.CPE)
 		}
 
 		// APT repos
