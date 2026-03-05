@@ -16,6 +16,8 @@ Requirements:
 """
 
 import argparse
+import atexit
+import fcntl
 import json
 import os
 import platform
@@ -40,6 +42,8 @@ except ImportError:
 
 __version__ = '2.0.0'
 DEFAULT_CONFIG = '/etc/patchman/patchman-client.conf'
+LOCK_DIR = '/run/lock/patchman'
+LOCK_FILE = os.path.join(LOCK_DIR, 'patchman.lock')
 
 
 class PatchmanClient:
@@ -1241,6 +1245,8 @@ def main() -> int:
                         help='API key for authentication')
     parser.add_argument('--no-verify-ssl', action='store_true',
                         help='Disable SSL certificate verification')
+    parser.add_argument('--post-hook', action='store_true',
+                        help='Run as package manager hook (implies -n)')
     parser.add_argument('--version', action='version',
                         version=f'patchman-client.py {__version__}')
 
@@ -1260,10 +1266,43 @@ def main() -> int:
     verify_ssl = not args.no_verify_ssl and config['verify_ssl']
     timeout = config['timeout']
 
+    # --post-hook: validate config and force no-repo-check
+    if args.post_hook:
+        if not server:
+            print('patchman-client: Server not configured.', file=sys.stderr)
+            print('  Edit config file and set server= to your patchman server URL.',
+                  file=sys.stderr)
+            return 1
+        repo_check = False
+        print('Sending report to patchman server...')
+
     if not server:
         print('Error: No server specified. Use -s or set server= in config file.',
               file=sys.stderr)
         return 1
+
+    # Acquire exclusive lock to prevent concurrent runs
+    os.makedirs(LOCK_DIR, exist_ok=True)
+    lock_fd = None
+    try:
+        lock_fd = open(LOCK_FILE, 'w')
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print('Error: another patchman-client instance is running.',
+              file=sys.stderr)
+        if lock_fd:
+            lock_fd.close()
+        return 1
+
+    def release_lock():
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
+            os.remove(LOCK_FILE)
+        except OSError:
+            pass
+
+    atexit.register(release_lock)
 
     # Create client
     client = PatchmanClient(

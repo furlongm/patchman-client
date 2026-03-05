@@ -19,6 +19,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"syscall"
 
 	"github.com/furlongm/patchman-client/go/lib/packages"
 	"github.com/furlongm/patchman-client/go/lib/report"
@@ -49,10 +51,42 @@ The server URL and API key can be provided via:
 		noVerifySSL := viper.GetBool("no_verify_ssl")
 		caFile := viper.GetString("ca_file")
 		noRepoCheck := viper.GetBool("no_repo_check")
+		postHook := viper.GetBool("post_hook")
+
+		// --post-hook: validate config and force no-repo-check
+		if postHook {
+			if serverURL == "" {
+				fmt.Fprintln(os.Stderr, "patchman-client: Server not configured.")
+				fmt.Fprintln(os.Stderr, "  Edit config file and set server= to your patchman server URL.")
+				os.Exit(1)
+			}
+			noRepoCheck = true
+			fmt.Println("Sending report to patchman server...")
+		}
 
 		// Validate required config (unless dry-run)
 		if serverURL == "" && !dryRun {
 			fmt.Fprintln(os.Stderr, "Error: server URL is required (--server or config file)")
+			os.Exit(1)
+		}
+
+		// Acquire exclusive lock to prevent concurrent runs
+		lockDir := "/run/lock/patchman"
+		os.MkdirAll(lockDir, 0o755)
+		lockPath := filepath.Join(lockDir, "patchman.lock")
+		lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: cannot open lock file %s: %v\n", lockPath, err)
+			os.Exit(1)
+		}
+		defer func() {
+			syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+			lockFile.Close()
+			os.Remove(lockPath)
+		}()
+		if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			lockFile.Close()
+			fmt.Fprintln(os.Stderr, "Error: another patchman-client instance is running.")
 			os.Exit(1)
 		}
 
@@ -293,5 +327,7 @@ The server URL and API key can be provided via:
 func init() {
 	// Bind flags to viper for config file support
 	submitCmd.Flags().Bool("dry-run", false, "collect and display report without submitting")
+	submitCmd.Flags().Bool("post-hook", false, "run as package manager hook (implies -n)")
 	viper.BindPFlag("dry-run", submitCmd.Flags().Lookup("dry-run"))
+	viper.BindPFlag("post_hook", submitCmd.Flags().Lookup("post-hook"))
 }
