@@ -7,8 +7,8 @@ Collects system information (packages, repos, modules, updates) and
 submits reports to a Patchman server.
 
 Usage:
-    patchman-client.py [-v] [-d] [-n] [-u] [-r] [-s SERVER] [-c FILE]
-                       [-t TAGS] [-h HOSTNAME] [-k API_KEY]
+    patchman-client.py [-v] [-d] [-n] [-u] [-s SERVER] [-c FILE]
+                       [-t TAGS] [-h HOSTNAME] [-k API_KEY] [--post-hook]
 
 Requirements:
     - Python 3.6+
@@ -55,7 +55,6 @@ class PatchmanClient:
         debug: bool = False,
         local_updates: bool = False,
         repo_check: bool = True,
-        report: bool = False,
         verify_ssl: bool = True,
         timeout: int = 300,
     ):
@@ -67,7 +66,6 @@ class PatchmanClient:
         self.debug = debug
         self.local_updates = local_updates
         self.repo_check = repo_check
-        self.report = report
         self.verify_ssl = verify_ssl
         self.timeout = timeout
 
@@ -1154,7 +1152,6 @@ def load_config(config_file: str) -> dict[str, Any]:
         'server': '',
         'api_key': '',
         'tags': '',
-        'report': False,
         'verbose': False,
         'debug': False,
         'local_updates': False,
@@ -1198,8 +1195,6 @@ def _load_config_file(config: dict[str, Any], path: str) -> None:
                         config['api_key'] = value
                     elif key == 'tags':
                         config['tags'] = value
-                    elif key == 'report':
-                        config['report'] = value.lower() in ('true', '1', 'yes')
                     elif key == 'verbose':
                         config['verbose'] = value.lower() in ('true', '1', 'yes')
                     elif key == 'debug':
@@ -1233,8 +1228,6 @@ def main() -> int:
                         help='Skip repository collection')
     parser.add_argument('-u', '--local-updates', action='store_true',
                         help='Find updates locally (for RHEL/SUSE)')
-    parser.add_argument('-r', '--report', action='store_true',
-                        help='Request a report from the server')
     parser.add_argument('-s', '--server', metavar='SERVER',
                         help='Patchman server URL')
     parser.add_argument('-c', '--config', metavar='FILE',
@@ -1264,7 +1257,6 @@ def main() -> int:
     debug = args.debug or config['debug']
     local_updates = args.local_updates or config['local_updates']
     repo_check = not args.no_repo_check and config['repo_check']
-    report = args.report or config['report']
     verify_ssl = not args.no_verify_ssl and config['verify_ssl']
     timeout = config['timeout']
 
@@ -1283,7 +1275,6 @@ def main() -> int:
         debug=debug,
         local_updates=local_updates,
         repo_check=repo_check,
-        report=report,
         verify_ssl=verify_ssl,
         timeout=timeout,
     )
