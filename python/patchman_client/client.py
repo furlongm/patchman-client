@@ -511,6 +511,12 @@ class PatchmanClient:
                     if u and u.startswith(('http://', 'https://')):
                         urls.append(u)
 
+            elif (line.startswith('Repo-metalink') or
+                  line.startswith('Repo-mirrors')) and current_repo:
+                url = line.split(':', 1)[1].strip() if ':' in line else ''
+                if url and url.startswith(('http://', 'https://')):
+                    urls.append(url)
+
             elif line.startswith(':') and current_repo and urls:
                 # Continuation line for URLs
                 url = line[1:].strip()

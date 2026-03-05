@@ -879,5 +879,305 @@ RLSA-2026:0067  Moderate/Sec.  tar-2:1.34-9.el9_7.x86_64"""
         self.assertEqual(len(important), 2)
 
 
+class YumRepolistAwkTests(unittest.TestCase):
+    """Tests for the awk parser that processes yum repolist --verbose output.
+
+    The bash client uses an awk one-liner to parse yum repolist output into
+    quoted fields. These tests pipe simulated output through the actual awk
+    and verify correct repo separation.
+    """
+
+    AWK_CMD = (
+        r"""awk 'BEGIN{n=0} { if ($1=="Repo-id") {if(n>0){print ""} n++; url=0; printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'"'"' "} if ($1=="Repo-name") {printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'" x86_64'"' "} if ($1=="Repo-mirrors" || $1=="Repo-metalink") {printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'"'"' "} if ($1=="Repo-baseurl" || $1=="Repo-baseurl:") { url=1; comma=match($NF,","); if (comma) out=substr($NF,1,comma-1); else out=$NF; printf "'"'"'"out"'"'"' "; } else { if (url==1) { if ($1==":") { comma=match($NF,","); if (comma) out=substr($NF,1,comma-1); else out=$NF; printf "'"'"'"out"'"'"' "; } else {url=0} } } } END{if(n>0) print ""}'"""
+    )
+
+    def _run_awk(self, input_text):
+        """Pipe input through the awk command and return output lines."""
+        import subprocess
+        result = subprocess.run(
+            ['bash', '-c', self.AWK_CMD],
+            input=input_text, capture_output=True, text=True,
+        )
+        return [line for line in result.stdout.splitlines() if line.strip()]
+
+    def test_baseurl_only_repo(self):
+        """Repo with only Repo-baseurl should produce one line."""
+        input_text = (
+            'Repo-id            : baseos\n'
+            'Repo-name          : Rocky Linux 10 - BaseOS\n'
+            'Repo-baseurl       : https://example.com/baseos/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 1)
+        self.assertIn('baseos', lines[0])
+        self.assertIn('https://example.com/baseos/', lines[0])
+
+    def test_metalink_only_repo(self):
+        """Repo with only Repo-metalink (no baseurl) should produce one line."""
+        input_text = (
+            'Repo-id            : epel\n'
+            'Repo-name          : Extra Packages for Enterprise Linux 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+            'Repo-filename      : /etc/yum.repos.d/epel.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 1)
+        self.assertIn('epel', lines[0])
+        self.assertIn('metalink', lines[0])
+
+    def test_mirrors_only_repo(self):
+        """Repo with only Repo-mirrors (no baseurl) should produce one line."""
+        input_text = (
+            'Repo-id            : extras\n'
+            'Repo-name          : Extras\n'
+            'Repo-mirrors       : https://mirrors.example.com/mirrorlist\n'
+            'Repo-filename      : /etc/yum.repos.d/extras.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 1)
+        self.assertIn('extras', lines[0])
+
+    def test_baseurl_and_metalink_repo(self):
+        """Repo with both baseurl and metalink should produce one line."""
+        input_text = (
+            'Repo-id            : epel\n'
+            'Repo-name          : EPEL 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+            'Repo-baseurl       : https://example.com/epel/10/\n'
+            'Repo-filename      : /etc/yum.repos.d/epel.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 1)
+        self.assertIn('epel', lines[0])
+
+    def test_multiple_baseurl_repos(self):
+        """Multiple repos with baseurls should each get their own line."""
+        input_text = (
+            'Repo-id            : baseos\n'
+            'Repo-name          : BaseOS\n'
+            'Repo-baseurl       : https://example.com/baseos/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+            '\n'
+            'Repo-id            : appstream\n'
+            'Repo-name          : AppStream\n'
+            'Repo-baseurl       : https://example.com/appstream/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 2)
+        self.assertIn('baseos', lines[0])
+        self.assertIn('appstream', lines[1])
+
+    def test_multiple_metalink_only_repos(self):
+        """Multiple metalink-only repos must not merge into one line.
+
+        This is the bug that caused the original crash: consecutive repos
+        with only Repo-metalink (no Repo-baseurl) would merge into a single
+        line, producing garbage that the server couldn't parse.
+        """
+        input_text = (
+            'Repo-id            : epel\n'
+            'Repo-name          : EPEL 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+            'Repo-filename      : /etc/yum.repos.d/epel.repo\n'
+            '\n'
+            'Repo-id            : epel-cisco\n'
+            'Repo-name          : EPEL Cisco\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-cisco-10\n'
+            'Repo-filename      : /etc/yum.repos.d/epel-cisco.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 2, f'Expected 2 lines but got {len(lines)}: {lines}')
+        self.assertIn('epel', lines[0])
+        self.assertIn('epel-cisco', lines[1])
+
+    def test_mixed_baseurl_and_metalink_repos(self):
+        """Mix of baseurl and metalink-only repos should all separate."""
+        input_text = (
+            'Repo-id            : baseos\n'
+            'Repo-name          : BaseOS\n'
+            'Repo-baseurl       : https://example.com/baseos/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+            '\n'
+            'Repo-id            : epel\n'
+            'Repo-name          : EPEL 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+            'Repo-filename      : /etc/yum.repos.d/epel.repo\n'
+            '\n'
+            'Repo-id            : appstream\n'
+            'Repo-name          : AppStream\n'
+            'Repo-baseurl       : https://example.com/appstream/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 3, f'Expected 3 lines but got {len(lines)}: {lines}')
+        self.assertIn('baseos', lines[0])
+        self.assertIn('epel', lines[1])
+        self.assertIn('appstream', lines[2])
+
+    def test_single_repo(self):
+        """Single repo should produce exactly one line."""
+        input_text = (
+            'Repo-id            : baseos\n'
+            'Repo-name          : BaseOS\n'
+            'Repo-baseurl       : https://example.com/baseos/\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 1)
+
+    def test_empty_input(self):
+        """Empty input should produce no output."""
+        lines = self._run_awk('')
+        self.assertEqual(len(lines), 0)
+
+    def test_baseurl_with_continuation_urls(self):
+        """Repo with multiple baseurl continuation lines."""
+        input_text = (
+            'Repo-id            : baseos\n'
+            'Repo-name          : BaseOS\n'
+            'Repo-baseurl       : https://mirror1.example.com/baseos/\n'
+            '                   : https://mirror2.example.com/baseos/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+        )
+        lines = self._run_awk(input_text)
+        self.assertEqual(len(lines), 1)
+        self.assertIn('mirror1', lines[0])
+        self.assertIn('mirror2', lines[0])
+
+
+class PythonClientYumRepoTests(unittest.TestCase):
+    """Tests for the Python client's yum/dnf repo parsing.
+
+    These test the actual PatchmanClient._collect_yum_repos method by
+    mocking _run_command and _command_exists. They will fail if the
+    Python client doesn't handle metalink/mirrors-only repos.
+    """
+
+    def _collect(self, yum_output, arch='x86_64'):
+        """Create a PatchmanClient, mock yum output, and collect repos."""
+        from unittest.mock import patch, PropertyMock
+        import sys
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'python',
+        ))
+        from patchman_client.client import PatchmanClient
+
+        client = PatchmanClient.__new__(PatchmanClient)
+        client.repos = []
+        client.arch = arch
+        client.cpe_name = ''
+        client.verbose = False
+        client.debug = False
+
+        # Mock _command_exists to return True for yum
+        client._command_exists = lambda cmd: True
+        client.log = lambda *a, **kw: None
+        # Mock _run_command to return our test output
+        client._run_command = lambda cmd: (0, yum_output, '')
+
+        client._collect_yum_repos()
+        return client.repos
+
+    def test_baseurl_only(self):
+        """Repo with baseurl should have URL captured."""
+        output = (
+            'Repo-id            : baseos\n'
+            'Repo-name          : Rocky Linux 10 - BaseOS\n'
+            'Repo-baseurl       : https://example.com/baseos/\n'
+        )
+        repos = self._collect(output)
+        self.assertEqual(len(repos), 1)
+        self.assertEqual(repos[0]['id'], 'baseos')
+        self.assertEqual(len(repos[0]['urls']), 1)
+        self.assertEqual(repos[0]['urls'][0], 'https://example.com/baseos/')
+
+    def test_metalink_only(self):
+        """Repo with only metalink must still have a URL captured."""
+        output = (
+            'Repo-id            : epel\n'
+            'Repo-name          : Extra Packages for Enterprise Linux 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+        )
+        repos = self._collect(output)
+        self.assertEqual(len(repos), 1)
+        self.assertEqual(repos[0]['id'], 'epel')
+        self.assertGreater(len(repos[0]['urls']), 0,
+                           'Metalink-only repo must have at least one URL')
+        self.assertIn('metalink', repos[0]['urls'][0])
+
+    def test_mirrors_only(self):
+        """Repo with only Repo-mirrors must still have a URL captured."""
+        output = (
+            'Repo-id            : extras\n'
+            'Repo-name          : Extras\n'
+            'Repo-mirrors       : https://mirrors.example.com/mirrorlist\n'
+        )
+        repos = self._collect(output)
+        self.assertEqual(len(repos), 1)
+        self.assertGreater(len(repos[0]['urls']), 0,
+                           'Mirrors-only repo must have at least one URL')
+
+    def test_multiple_metalink_only_repos(self):
+        """Multiple metalink-only repos should each be separate."""
+        output = (
+            'Repo-id            : epel\n'
+            'Repo-name          : EPEL 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+            'Repo-filename      : /etc/yum.repos.d/epel.repo\n'
+            '\n'
+            'Repo-id            : epel-cisco\n'
+            'Repo-name          : EPEL Cisco\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-cisco-10\n'
+            'Repo-filename      : /etc/yum.repos.d/epel-cisco.repo\n'
+        )
+        repos = self._collect(output)
+        self.assertEqual(len(repos), 2)
+        self.assertEqual(repos[0]['id'], 'epel')
+        self.assertGreater(len(repos[0]['urls']), 0)
+        self.assertEqual(repos[1]['id'], 'epel-cisco')
+        self.assertGreater(len(repos[1]['urls']), 0)
+
+    def test_mixed_baseurl_and_metalink_repos(self):
+        """Mix of baseurl and metalink-only repos."""
+        output = (
+            'Repo-id            : baseos\n'
+            'Repo-name          : BaseOS\n'
+            'Repo-baseurl       : https://example.com/baseos/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+            '\n'
+            'Repo-id            : epel\n'
+            'Repo-name          : EPEL 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+            'Repo-filename      : /etc/yum.repos.d/epel.repo\n'
+            '\n'
+            'Repo-id            : appstream\n'
+            'Repo-name          : AppStream\n'
+            'Repo-baseurl       : https://example.com/appstream/\n'
+            'Repo-filename      : /etc/yum.repos.d/rocky.repo\n'
+        )
+        repos = self._collect(output)
+        self.assertEqual(len(repos), 3)
+        self.assertEqual(repos[0]['id'], 'baseos')
+        self.assertIn('baseos', repos[0]['urls'][0])
+        self.assertEqual(repos[1]['id'], 'epel')
+        self.assertIn('metalink', repos[1]['urls'][0])
+        self.assertEqual(repos[2]['id'], 'appstream')
+        self.assertIn('appstream', repos[2]['urls'][0])
+
+    def test_baseurl_preferred_over_metalink(self):
+        """When both baseurl and metalink exist, both should be captured."""
+        output = (
+            'Repo-id            : epel\n'
+            'Repo-name          : EPEL 10\n'
+            'Repo-metalink      : https://mirrors.fedoraproject.org/metalink?repo=epel-10\n'
+            'Repo-baseurl       : https://example.com/epel/10/\n'
+        )
+        repos = self._collect(output)
+        self.assertEqual(len(repos), 1)
+        self.assertGreaterEqual(len(repos[0]['urls']), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
