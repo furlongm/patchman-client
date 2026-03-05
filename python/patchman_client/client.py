@@ -244,12 +244,28 @@ class PatchmanClient:
 
     def check_reboot_required(self) -> None:
         """Check if a reboot is required."""
+        # Debian/Ubuntu: update-notifier-common sets this file
         if os.path.exists('/var/run/reboot-required'):
             self.reboot_required = True
-            self.log('Reboot required: Yes')
-        else:
-            self.reboot_required = False
-            self.log('Reboot required: No (server will check)')
+            self.log('Reboot required: Yes (reboot-required file)')
+            return
+
+        # RPM-based (RHEL/Fedora/CentOS): compare running vs installed kernel
+        if os.path.exists('/usr/bin/rpm'):
+            try:
+                running = Path('/proc/sys/kernel/osrelease').read_text().strip()
+                vmlinuz = Path('/boot/vmlinuz')
+                if vmlinuz.is_symlink():
+                    installed = vmlinuz.resolve().name.removeprefix('vmlinuz-')
+                    if running != installed:
+                        self.reboot_required = True
+                        self.log('Reboot required: Yes (kernel mismatch)')
+                        return
+            except OSError:
+                pass
+
+        self.reboot_required = False
+        self.log('Reboot required: No (server will check)')
 
     # -------------------------------------------------------------------------
     # Package Collection
@@ -1319,10 +1335,10 @@ def main() -> int:
                         help='Override hostname')
     parser.add_argument('-k', '--api-key', metavar='KEY',
                         help='API key for authentication')
-    parser.add_argument('--no-verify-ssl', action='store_true',
-                        help='Disable SSL certificate verification')
     parser.add_argument('--post-hook', action='store_true',
                         help='Run as package manager hook (implies -n)')
+    parser.add_argument('--no-verify-ssl', action='store_true',
+                        help='Disable SSL certificate verification')
     parser.add_argument('--version', action='version',
                         version=f'patchman-client.py {__version__}')
 
@@ -1330,6 +1346,16 @@ def main() -> int:
 
     # Load config file
     config = load_config(args.config)
+
+    # --post-hook: validate config and force -n
+    if args.post_hook:
+        if not config['server']:
+            print('patchman-client: Server not configured.', file=sys.stderr)
+            print(f'  Edit {args.config} and set server= to your patchman server URL.',
+                  file=sys.stderr)
+            return 1
+        args.no_repo_check = True
+        print('Sending report to patchman server...')
 
     # Command line overrides config file
     server = args.server or config['server']
@@ -1342,43 +1368,32 @@ def main() -> int:
     verify_ssl = not args.no_verify_ssl and config['verify_ssl']
     timeout = config['timeout']
 
-    # --post-hook: validate config and force no-repo-check
-    if args.post_hook:
-        if not server:
-            print('patchman-client: Server not configured.', file=sys.stderr)
-            print('  Edit config file and set server= to your patchman server URL.',
-                  file=sys.stderr)
-            return 1
-        repo_check = False
-        print('Sending report to patchman server...')
-
     if not server:
         print('Error: No server specified. Use -s or set server= in config file.',
               file=sys.stderr)
         return 1
 
     # Acquire exclusive lock to prevent concurrent runs
-    os.makedirs(LOCK_DIR, exist_ok=True)
     lock_fd = None
     try:
+        os.makedirs(LOCK_DIR, exist_ok=True)
         lock_fd = open(LOCK_FILE, 'w')
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        print('Error: another patchman-client instance is running.',
-              file=sys.stderr)
         if lock_fd:
             lock_fd.close()
+        print('Error: another patchman-client instance is running.', file=sys.stderr)
         return 1
 
-    def release_lock():
+    def _release_lock():
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()
-            os.remove(LOCK_FILE)
+            os.unlink(LOCK_FILE)
         except OSError:
             pass
 
-    atexit.register(release_lock)
+    atexit.register(_release_lock)
 
     # Create client
     client = PatchmanClient(

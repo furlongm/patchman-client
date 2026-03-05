@@ -476,11 +476,5 @@ func CheckRebootRequired() bool {
 		}
 	}
 
-	// Arch Linux: compare running vs installed linux package
-	if _, err := os.Stat("/var/lib/pacman/local"); err == nil {
-		// Could check pacman -Q linux vs uname -r
-		// For now, simple check
-	}
-
 	return false
 }
