@@ -48,6 +48,7 @@ The server URL and API key can be provided via:
 		tags := viper.GetString("tags")
 		noVerifySSL := viper.GetBool("no_verify_ssl")
 		caFile := viper.GetString("ca_file")
+		noRepoCheck := viper.GetBool("no_repo_check")
 
 		// Validate required config (unless dry-run)
 		if serverURL == "" && !dryRun {
@@ -110,54 +111,58 @@ The server URL and API key can be provided via:
 			rpt.AddPortagePkgs(portagePkgs)
 		}
 
-		// Collect repositories
-		if verbose {
-			fmt.Println("Collecting repositories...")
-		}
-
-		// YUM/DNF repos
-		yumRepos, err := repos.GetYumRepos()
-		if err == nil && len(yumRepos) > 0 {
+		// Collect repositories (unless --no-repo-check)
+		if !noRepoCheck {
 			if verbose {
-				fmt.Printf("  Found %d YUM/DNF repositories\n", len(yumRepos))
+				fmt.Println("Collecting repositories...")
 			}
-			rpt.AddYumRepos(yumRepos, osInfo.CPE)
-		}
 
-		// APT repos
-		aptRepos, err := repos.GetAptRepos(osInfo)
-		if err == nil && len(aptRepos) > 0 {
-			if verbose {
-				fmt.Printf("  Found %d APT repositories\n", len(aptRepos))
+			// YUM/DNF repos
+			yumRepos, err := repos.GetYumRepos()
+			if err == nil && len(yumRepos) > 0 {
+				if verbose {
+					fmt.Printf("  Found %d YUM/DNF repositories\n", len(yumRepos))
+				}
+				rpt.AddYumRepos(yumRepos, osInfo.CPE)
 			}
-			rpt.AddAptRepos(aptRepos)
-		}
 
-		// Zypper repos
-		zyppRepos, err := repos.GetZyppRepos()
-		if err == nil && len(zyppRepos) > 0 {
-			if verbose {
-				fmt.Printf("  Found %d Zypper repositories\n", len(zyppRepos))
+			// APT repos
+			aptRepos, err := repos.GetAptRepos(osInfo)
+			if err == nil && len(aptRepos) > 0 {
+				if verbose {
+					fmt.Printf("  Found %d APT repositories\n", len(aptRepos))
+				}
+				rpt.AddAptRepos(aptRepos)
 			}
-			rpt.AddZyppRepos(zyppRepos)
-		}
 
-		// Pacman repos
-		pacmanRepos, err := repos.GetPacmanRepos()
-		if err == nil && len(pacmanRepos) > 0 {
-			if verbose {
-				fmt.Printf("  Found %d Pacman repositories\n", len(pacmanRepos))
+			// Zypper repos
+			zyppRepos, err := repos.GetZyppRepos()
+			if err == nil && len(zyppRepos) > 0 {
+				if verbose {
+					fmt.Printf("  Found %d Zypper repositories\n", len(zyppRepos))
+				}
+				rpt.AddZyppRepos(zyppRepos)
 			}
-			rpt.AddPacmanRepos(pacmanRepos)
-		}
 
-		// Portage repos
-		portageRepos, err := repos.GetPortageRepos()
-		if err == nil && len(portageRepos) > 0 {
-			if verbose {
-				fmt.Printf("  Found %d Portage repositories\n", len(portageRepos))
+			// Pacman repos
+			pacmanRepos, err := repos.GetPacmanRepos()
+			if err == nil && len(pacmanRepos) > 0 {
+				if verbose {
+					fmt.Printf("  Found %d Pacman repositories\n", len(pacmanRepos))
+				}
+				rpt.AddPacmanRepos(pacmanRepos)
 			}
-			rpt.AddPortageRepos(portageRepos)
+
+			// Portage repos
+			portageRepos, err := repos.GetPortageRepos()
+			if err == nil && len(portageRepos) > 0 {
+				if verbose {
+					fmt.Printf("  Found %d Portage repositories\n", len(portageRepos))
+				}
+				rpt.AddPortageRepos(portageRepos)
+			}
+		} else if verbose {
+			fmt.Println("Skipping repository collection (--no-repo-check)")
 		}
 
 		// DNF modules

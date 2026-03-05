@@ -1166,34 +1166,57 @@ def load_config(config_file: str) -> dict[str, Any]:
     if not os.path.exists(config_file):
         return config
 
-    # Parse shell-style config file
-    with open(config_file) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            if '=' in line:
-                key, value = line.split('=', 1)
-                key = key.strip()
-                value = value.strip().strip('"').strip("'")
+    _load_config_file(config, config_file)
 
-                if key == 'server':
-                    config['server'] = value
-                elif key == 'api_key':
-                    config['api_key'] = value
-                elif key == 'tags':
-                    config['tags'] = value
-                elif key == 'report':
-                    config['report'] = value.lower() in ('true', '1', 'yes')
-                elif key == 'verify_ssl':
-                    config['verify_ssl'] = value.lower() in ('true', '1', 'yes')
-                elif key == 'timeout':
-                    try:
-                        config['timeout'] = int(value)
-                    except ValueError:
-                        pass
+    # Load conf.d drop-in files (like bash client)
+    conf_dir = os.path.join(os.path.dirname(config_file), 'conf.d')
+    if os.path.isdir(conf_dir):
+        for f in sorted(os.listdir(conf_dir)):
+            path = os.path.join(conf_dir, f)
+            if os.path.isfile(path):
+                _load_config_file(config, path)
 
     return config
+
+
+def _load_config_file(config: dict[str, Any], path: str) -> None:
+    """Parse a single shell-style config file into config dict."""
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+
+                    if key == 'server':
+                        config['server'] = value
+                    elif key == 'api_key':
+                        config['api_key'] = value
+                    elif key == 'tags':
+                        config['tags'] = value
+                    elif key == 'report':
+                        config['report'] = value.lower() in ('true', '1', 'yes')
+                    elif key == 'verbose':
+                        config['verbose'] = value.lower() in ('true', '1', 'yes')
+                    elif key == 'debug':
+                        config['debug'] = value.lower() in ('true', '1', 'yes')
+                    elif key == 'local_updates':
+                        config['local_updates'] = value.lower() in ('true', '1', 'yes')
+                    elif key == 'repo_check':
+                        config['repo_check'] = value.lower() in ('true', '1', 'yes')
+                    elif key == 'verify_ssl':
+                        config['verify_ssl'] = value.lower() in ('true', '1', 'yes')
+                    elif key == 'timeout':
+                        try:
+                            config['timeout'] = int(value)
+                        except ValueError:
+                            pass
+    except OSError:
+        pass
 
 
 def main() -> int:
