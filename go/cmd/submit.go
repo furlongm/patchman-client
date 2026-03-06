@@ -56,7 +56,13 @@ The server URL and API key can be provided via:
 
 		// Validate required config (unless dry-run)
 		if serverURL == "" && !dryRun {
-			fmt.Fprintln(os.Stderr, "Error: server URL is required (--server or config file)")
+			fmt.Fprintln(os.Stderr, "patchman-client: server not configured.")
+			fmt.Fprintln(os.Stderr, "  Set server= in config file or use --server flag.")
+			os.Exit(1)
+		}
+		if strings.Contains(serverURL, "patchman.example.com") {
+			fmt.Fprintln(os.Stderr, "patchman-client: server not configured.")
+			fmt.Fprintln(os.Stderr, "  Set server= in config file or use --server flag.")
 			os.Exit(1)
 		}
 

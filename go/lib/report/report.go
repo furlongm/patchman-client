@@ -454,25 +454,17 @@ func CheckRebootRequired() bool {
 		return true
 	}
 
-	// RHEL/Fedora: needs-restarting (check for kernel)
-	// Compare running kernel with installed kernel
+	// Compare running vs installed kernel via /boot/vmlinuz symlink
 	runningKernel, err := os.ReadFile("/proc/sys/kernel/osrelease")
 	if err != nil {
 		return false
 	}
 	running := strings.TrimSpace(string(runningKernel))
 
-	// Check if current kernel package matches running kernel
-	// For RPM-based: rpm -q kernel --last | head -1
-	// For simplicity, check if running kernel is the latest installed
-	if _, err := os.Stat("/usr/bin/rpm"); err == nil {
-		// Check default symlink on RHEL/Fedora
-		if target, err := os.Readlink("/boot/vmlinuz"); err == nil {
-			// vmlinuz -> vmlinuz-5.14.0-xxx
-			installedKernel := strings.TrimPrefix(target, "vmlinuz-")
-			if installedKernel != running {
-				return true
-			}
+	if target, err := os.Readlink("/boot/vmlinuz"); err == nil {
+		installedKernel := strings.TrimPrefix(target, "vmlinuz-")
+		if installedKernel != running {
+			return true
 		}
 	}
 

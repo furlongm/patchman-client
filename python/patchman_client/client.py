@@ -250,19 +250,18 @@ class PatchmanClient:
             self.log('Reboot required: Yes (reboot-required file)')
             return
 
-        # RPM-based (RHEL/Fedora/CentOS): compare running vs installed kernel
-        if os.path.exists('/usr/bin/rpm'):
-            try:
-                running = Path('/proc/sys/kernel/osrelease').read_text().strip()
-                vmlinuz = Path('/boot/vmlinuz')
-                if vmlinuz.is_symlink():
-                    installed = vmlinuz.resolve().name.removeprefix('vmlinuz-')
-                    if running != installed:
-                        self.reboot_required = True
-                        self.log('Reboot required: Yes (kernel mismatch)')
-                        return
-            except OSError:
-                pass
+        # Compare running vs installed kernel via /boot/vmlinuz symlink
+        try:
+            running = Path('/proc/sys/kernel/osrelease').read_text().strip()
+            vmlinuz = Path('/boot/vmlinuz')
+            if vmlinuz.is_symlink():
+                installed = vmlinuz.resolve().name.removeprefix('vmlinuz-')
+                if running != installed:
+                    self.reboot_required = True
+                    self.log('Reboot required: Yes (kernel mismatch)')
+                    return
+        except OSError:
+            pass
 
         self.reboot_required = False
         self.log('Reboot required: No (server will check)')
@@ -1357,7 +1356,14 @@ def main() -> int:
     timeout = config['timeout']
 
     if not server:
-        print('Error: No server specified. Use -s or set server= in config file.',
+        print('patchman-client: server not configured.', file=sys.stderr)
+        print(f'  Edit {args.config} and set server= to your patchman server URL.',
+              file=sys.stderr)
+        return 1
+
+    if 'patchman.example.com' in server:
+        print('patchman-client: server not configured.', file=sys.stderr)
+        print(f'  Edit {args.config} and set server= to your patchman server URL.',
               file=sys.stderr)
         return 1
 

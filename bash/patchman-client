@@ -122,12 +122,11 @@ check_conf() {
     fi
 
     if [ -z "${conf}" ] || [ ! -f "${conf}" ] ; then
-        if ${verbose} ; then
-            echo "Warning: config file '${conf}' not found."
-        fi
-    else
-        source "${conf}"
+        echo "patchman-client: config file not found: ${conf}" >&2
+        echo "  Create the config file and set server= to your patchman server." >&2
+        exit 1
     fi
+    source "${conf}"
 
     conf_dir=$(dirname "${conf}")/conf.d
     if [ -d "${conf_dir}" ] ; then
@@ -137,13 +136,19 @@ check_conf() {
         fi
     fi
 
+    # check server is configured and not the example placeholder
     if [ -z "${server}" ] && [ -z "${cli_server}" ] ; then
-        echo 'Patchman server not set, exiting.'
+        echo "patchman-client: server not configured." >&2
+        echo "  Edit ${conf} and set server= to your patchman server URL." >&2
         exit 1
-    else
-        if [ ! -z "${cli_server}" ] ; then
-            server=${cli_server}
-        fi
+    fi
+    if [ ! -z "${cli_server}" ] ; then
+        server=${cli_server}
+    fi
+    if echo "${server}" | grep -qE 'patchman\.example\.com' ; then
+        echo "patchman-client: server not configured." >&2
+        echo "  Edit ${conf} and set server= to your patchman server URL." >&2
+        exit 1
     fi
 
     if [ ! -z "${cli_report}" ] ; then
@@ -704,15 +709,13 @@ reboot_required() {
         return
     fi
 
-    # RPM-based (RHEL/Fedora/CentOS): compare running vs installed kernel
-    if [ -e /proc/sys/kernel/osrelease ] && [ -e /usr/bin/rpm ] ; then
+    # Compare running vs installed kernel via /boot/vmlinuz symlink
+    if [ -e /proc/sys/kernel/osrelease ] && [ -L /boot/vmlinuz ] ; then
         running_kernel=$(cat /proc/sys/kernel/osrelease)
-        if [ -L /boot/vmlinuz ] ; then
-            installed_kernel=$(readlink /boot/vmlinuz | sed -e 's/^vmlinuz-//')
-            if [ "${running_kernel}" != "${installed_kernel}" ] ; then
-                reboot=True
-                return
-            fi
+        installed_kernel=$(readlink /boot/vmlinuz | sed -e 's/^vmlinuz-//')
+        if [ "${running_kernel}" != "${installed_kernel}" ] ; then
+            reboot=True
+            return
         fi
     fi
 
