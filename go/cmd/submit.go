@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -325,6 +326,41 @@ The server URL and API key can be provided via:
 			fmt.Printf("Reboot required: %v\n", rpt.RebootRequired)
 			if tags != "" {
 				fmt.Printf("Tags: %v\n", rpt.Tags)
+			}
+			if verbose {
+				if len(rpt.Packages) > 0 {
+					fmt.Println("\n=== Packages ===")
+					names := make([]string, 0, len(rpt.Packages))
+					for _, p := range rpt.Packages {
+						names = append(names, fmt.Sprintf("  %s-%s (%s)", p.Name, p.Version, p.Type))
+					}
+					sort.Strings(names)
+					fmt.Println(strings.Join(names, "\n"))
+				}
+				if len(rpt.Repos) > 0 {
+					fmt.Println("\n=== Repos ===")
+					for _, r := range rpt.Repos {
+						fmt.Printf("  [%s] %s %s\n", r.Type, r.Name, strings.Join(r.URLs, " "))
+					}
+				}
+				if len(rpt.SecUpdates) > 0 {
+					fmt.Println("\n=== Security Updates ===")
+					for _, u := range rpt.SecUpdates {
+						fmt.Printf("  %s-%s\n", u.Name, u.Version)
+					}
+				}
+				if len(rpt.BugUpdates) > 0 {
+					fmt.Println("\n=== Bugfix Updates ===")
+					for _, u := range rpt.BugUpdates {
+						fmt.Printf("  %s-%s\n", u.Name, u.Version)
+					}
+				}
+				if len(rpt.Modules) > 0 {
+					fmt.Println("\n=== Modules ===")
+					for _, m := range rpt.Modules {
+						fmt.Printf("  %s:%s\n", m.Name, m.Stream)
+					}
+				}
 			}
 			if debug {
 				jsonData, _ := rpt.ToJSON()

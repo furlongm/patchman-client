@@ -1237,6 +1237,33 @@ class PatchmanClient:
         if self.tags:
             print(f'Tags: {",".join(self.tags)}')
 
+        if self.verbose:
+            if self.packages:
+                print('\n=== Packages ===')
+                for p in sorted(self.packages, key=lambda x: x['name']):
+                    print(f'  {p["name"]}-{p["version"]} ({p["type"]})')
+            if self.repos:
+                print('\n=== Repos ===')
+                for r in self.repos:
+                    print(f'  [{r["type"]}] {r["name"]} {" ".join(r.get("urls", []))}')
+            if self.sec_updates:
+                print('\n=== Security Updates ===')
+                for u in self.sec_updates:
+                    print(f'  {u["name"]}-{u["version"]}')
+            if self.bug_updates:
+                print('\n=== Bugfix Updates ===')
+                for u in self.bug_updates:
+                    print(f'  {u["name"]}-{u["version"]}')
+            if self.modules:
+                print('\n=== Modules ===')
+                for m in self.modules:
+                    print(f'  {m["name"]}:{m["stream"]}')
+
+        if self.debug:
+            import json
+            print('\n=== Full JSON Report ===')
+            print(json.dumps(report, indent=2))
+
     def run(self) -> bool:
         """Run the client: collect data and submit report."""
         self.log(f'Patchman Python Client v{__version__}')
