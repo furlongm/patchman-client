@@ -51,6 +51,12 @@ func GetOSInfo() OSInfo {
 	if cpe, ok := osRelease["CPE_NAME"]; ok {
 		osi.CPE = cpe
 	}
+
+	// Build OS name from os-release for consistency with bash/python clients
+	if osName := buildOSString(osRelease, osi.CPE); osName != "" {
+		osi.OSName = osName
+	}
+
 	// Get codename from VERSION or VERSION_CODENAME
 	if codename, ok := osRelease["VERSION_CODENAME"]; ok {
 		osi.Codename = codename

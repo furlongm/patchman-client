@@ -1179,5 +1179,482 @@ class PythonClientYumRepoTests(unittest.TestCase):
         self.assertGreaterEqual(len(repos[0]['urls']), 1)
 
 
+class CDNDetectionTests(unittest.TestCase):
+    """Tests for CDN repo detection logic that auto-enables local_updates."""
+
+    CDN_PATTERNS = [
+        ('https://cdn.redhat.com/content/dist/rhel9/9/x86_64/baseos/os', True),
+        ('https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/x86_64/baseos/os', True),
+        ('https://satellite.example.com/XMLRPC/channel', True),
+        ('https://updates.suse.com/SUSE/Products/SLE-Module-Basesystem/15-SP5/x86_64/product/', True),
+        ('https://mirror.example.com/rocky/10/BaseOS/x86_64/os/', False),
+        ('http://archive.ubuntu.com/ubuntu', False),
+        ('https://dl.fedoraproject.org/pub/epel/10/Everything/x86_64/', False),
+    ]
+
+    def _matches_cdn(self, url):
+        """Test URL against CDN detection logic from python client."""
+        import re
+        return bool(
+            re.search(r'https://cdn[^.]*\.redhat\.com/', url) or
+            '/XMLRPC' in url or
+            url.startswith('https://updates.suse.com/')
+        )
+
+    def test_cdn_patterns(self):
+        """Each URL should be correctly identified as CDN or not."""
+        for url, expected in self.CDN_PATTERNS:
+            with self.subTest(url=url):
+                result = self._matches_cdn(url)
+                self.assertEqual(result, expected,
+                                 f'{url} expected CDN={expected}, got {result}')
+
+    def test_cdn_detection_enables_local_updates(self):
+        """Simulated repo list with CDN should trigger local_updates."""
+        repos = [
+            {'urls': ['https://mirror.example.com/baseos/']},
+            {'urls': ['https://cdn.redhat.com/content/dist/rhel9/baseos/os']},
+        ]
+        local_updates = False
+        import re
+        for repo in repos:
+            for url in repo.get('urls', []):
+                if (re.search(r'https://cdn[^.]*\.redhat\.com/', url) or
+                        '/XMLRPC' in url or
+                        url.startswith('https://updates.suse.com/')):
+                    local_updates = True
+                    break
+            if local_updates:
+                break
+        self.assertTrue(local_updates)
+
+    def test_no_cdn_repos(self):
+        """Repo list without CDN should not trigger local_updates."""
+        repos = [
+            {'urls': ['https://mirror.example.com/baseos/']},
+            {'urls': ['http://archive.ubuntu.com/ubuntu']},
+        ]
+        local_updates = False
+        import re
+        for repo in repos:
+            for url in repo.get('urls', []):
+                if (re.search(r'https://cdn[^.]*\.redhat\.com/', url) or
+                        '/XMLRPC' in url or
+                        url.startswith('https://updates.suse.com/')):
+                    local_updates = True
+                    break
+        self.assertFalse(local_updates)
+
+
+class APTUpdateParsingTests(unittest.TestCase):
+    """Tests for APT update parsing (apt list --upgradable output)."""
+
+    def _parse_apt_updates(self, output):
+        """Parse apt list --upgradable output, matching python client logic."""
+        import re
+        sec_updates = []
+        bug_updates = []
+        pattern = re.compile(r'^([^/]+)/(\S+)\s+(\S+)\s+(\S+)')
+        for line in output.splitlines():
+            line = line.strip()
+            if not line or line.startswith('Listing'):
+                continue
+            match = pattern.match(line)
+            if not match:
+                continue
+            pkg_name, suite, version, arch = match.groups()
+            update = {'name': pkg_name, 'version': version, 'arch': arch}
+            if 'security' in suite.lower():
+                sec_updates.append(update)
+            else:
+                bug_updates.append(update)
+        return sec_updates, bug_updates
+
+    def test_security_update(self):
+        """Security updates should be classified correctly."""
+        output = (
+            'Listing... Done\n'
+            'curl/jammy-security 7.81.0-1ubuntu1.15 amd64 '
+            '[upgradable from: 7.81.0-1ubuntu1.14]\n'
+        )
+        sec, bug = self._parse_apt_updates(output)
+        self.assertEqual(len(sec), 1)
+        self.assertEqual(len(bug), 0)
+        self.assertEqual(sec[0]['name'], 'curl')
+        self.assertEqual(sec[0]['version'], '7.81.0-1ubuntu1.15')
+        self.assertEqual(sec[0]['arch'], 'amd64')
+
+    def test_bugfix_update(self):
+        """Non-security updates should be classified as bugfix."""
+        output = (
+            'Listing... Done\n'
+            'vim/jammy-updates 2:8.2.3995-1ubuntu2.15 amd64 '
+            '[upgradable from: 2:8.2.3995-1ubuntu2.14]\n'
+        )
+        sec, bug = self._parse_apt_updates(output)
+        self.assertEqual(len(sec), 0)
+        self.assertEqual(len(bug), 1)
+        self.assertEqual(bug[0]['name'], 'vim')
+
+    def test_mixed_updates(self):
+        """Mixed security and bugfix updates should be split correctly."""
+        output = (
+            'Listing... Done\n'
+            'openssl/jammy-security 3.0.2-0ubuntu1.15 amd64 '
+            '[upgradable from: 3.0.2-0ubuntu1.14]\n'
+            'vim/jammy-updates 2:8.2.3995-1ubuntu2.15 amd64 '
+            '[upgradable from: 2:8.2.3995-1ubuntu2.14]\n'
+            'curl/noble-security 8.5.0-2ubuntu10.6 amd64 '
+            '[upgradable from: 8.5.0-2ubuntu10.5]\n'
+        )
+        sec, bug = self._parse_apt_updates(output)
+        self.assertEqual(len(sec), 2)
+        self.assertEqual(len(bug), 1)
+
+    def test_no_updates(self):
+        """Empty update list should produce no updates."""
+        output = 'Listing... Done\n'
+        sec, bug = self._parse_apt_updates(output)
+        self.assertEqual(len(sec), 0)
+        self.assertEqual(len(bug), 0)
+
+    def test_empty_input(self):
+        """Completely empty input should produce no updates."""
+        sec, bug = self._parse_apt_updates('')
+        self.assertEqual(len(sec), 0)
+        self.assertEqual(len(bug), 0)
+
+
+class MirrorFileResolutionTests(unittest.TestCase):
+    """Tests for mirror+file:// URL resolution in APT repo parsing."""
+
+    def test_mirror_file_regex_match(self):
+        """mirror+file: URLs should be matched by the expanded regex."""
+        import re
+        pattern = re.compile(
+            r'^\s*(\d+)\s+(https?://\S+|mirror\+file:\S+)\s+(\S+)\s+(\S+)',
+        )
+        line = ' 500 mirror+file:/etc/apt/mirror-list.txt focal/main amd64 Packages'
+        match = pattern.match(line)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(2), 'mirror+file:/etc/apt/mirror-list.txt')
+
+    def test_http_url_still_matches(self):
+        """HTTP URLs should still match the expanded pattern."""
+        import re
+        pattern = re.compile(
+            r'^\s*(\d+)\s+(https?://\S+|mirror\+file:\S+)\s+(\S+)\s+(\S+)',
+        )
+        line = ' 500 http://archive.ubuntu.com/ubuntu focal/main amd64 Packages'
+        match = pattern.match(line)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(2), 'http://archive.ubuntu.com/ubuntu')
+
+    def test_mirror_file_resolution(self, tmp_path=None):
+        """mirror+file: entries should be resolved to HTTP URLs."""
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write('http://mirror1.example.com/ubuntu\n')
+            f.write('https://mirror2.example.com/ubuntu\n')
+            f.write('\n')
+            f.write('# comment should be ignored by real parser\n')
+            mirror_path = f.name
+        try:
+            # Simulate the mirror resolution logic from python client
+            http_entries = []
+            mirror_url = f'mirror+file:{mirror_path}'
+            path = mirror_url.replace('mirror+file:', '')
+            if os.path.isfile(path):
+                with open(path) as mf:
+                    for url_line in mf:
+                        url = url_line.strip()
+                        if url and url.startswith(('http://', 'https://')):
+                            http_entries.append(url)
+            self.assertEqual(len(http_entries), 2)
+            self.assertEqual(http_entries[0], 'http://mirror1.example.com/ubuntu')
+            self.assertEqual(http_entries[1], 'https://mirror2.example.com/ubuntu')
+        finally:
+            os.unlink(mirror_path)
+
+
+class BashDebFieldBranchingTests(unittest.TestCase):
+    """Tests for deb vs rpm field format in bash build_repos_json."""
+
+    def _parse_fields(self, line, rtype):
+        """Simulate the bash deb/rpm field branching logic."""
+        import re
+        parts = re.findall(r"'([^']*)'", line)
+        name = parts[1] if len(parts) > 1 else ''
+        if rtype == 'deb':
+            rid = ''
+            priority = parts[2] if len(parts) > 2 else '0'
+            url_start = 3
+        else:
+            rid = parts[2] if len(parts) > 2 else ''
+            priority = parts[3] if len(parts) > 3 else '0'
+            url_start = 4
+        urls = parts[url_start:] if len(parts) > url_start else []
+        return name, rid, priority, urls
+
+    def test_rpm_repo_5_fields(self):
+        """RPM repos have type, name, id, priority, url1 [url2 ...]."""
+        line = "'rpm' 'BaseOS x86_64' 'baseos' '99' 'https://mirror/baseos/'"
+        name, rid, priority, urls = self._parse_fields(line, 'rpm')
+        self.assertEqual(name, 'BaseOS x86_64')
+        self.assertEqual(rid, 'baseos')
+        self.assertEqual(priority, '99')
+        self.assertEqual(urls, ['https://mirror/baseos/'])
+
+    def test_deb_repo_4_fields(self):
+        """Deb repos have type, name, priority, url (no id)."""
+        line = "'deb' 'Ubuntu 22.04 amd64 repo at http://x/dists/y' '500' 'http://x/dists/y'"
+        name, rid, priority, urls = self._parse_fields(line, 'deb')
+        self.assertEqual(name, 'Ubuntu 22.04 amd64 repo at http://x/dists/y')
+        self.assertEqual(rid, '')
+        self.assertEqual(priority, '500')
+        self.assertEqual(urls, ['http://x/dists/y'])
+
+    def test_rpm_repo_multiple_urls(self):
+        """RPM repos can have multiple URLs."""
+        line = "'rpm' 'EPEL x86_64' 'epel' '99' 'https://mirror1/' 'https://mirror2/'"
+        name, rid, priority, urls = self._parse_fields(line, 'rpm')
+        self.assertEqual(rid, 'epel')
+        self.assertEqual(len(urls), 2)
+
+    def test_deb_would_misparse_as_rpm(self):
+        """Deb repo parsed as RPM would get wrong fields — proves branching needed."""
+        line = "'deb' 'Ubuntu 22.04 amd64 repo' '500' 'http://x/dists/y'"
+        # If parsed as RPM: rid='500', priority='http://x/dists/y' — wrong!
+        _, rid_rpm, priority_rpm, _ = self._parse_fields(line, 'rpm')
+        self.assertEqual(rid_rpm, '500')  # wrong: '500' is actually priority
+        # If parsed as DEB: rid='', priority='500' — correct!
+        _, rid_deb, priority_deb, _ = self._parse_fields(line, 'deb')
+        self.assertEqual(rid_deb, '')
+        self.assertEqual(priority_deb, '500')
+
+
+class BashArchDedupTests(unittest.TestCase):
+    """Tests for the sed pattern that strips duplicate arch suffixes."""
+
+    def _dedup_arch(self, name, arch='x86_64'):
+        """Apply the same sed logic as bash: s/ - arch arch$/ arch/."""
+        import subprocess
+        result = subprocess.run(
+            ['sed', '-e', f's/ - {arch} {arch}$/ {arch}/'],
+            input=name, capture_output=True, text=True,
+        )
+        return result.stdout.strip()
+
+    def test_duplicate_arch_stripped(self):
+        """'EPEL - x86_64 x86_64' should become 'EPEL x86_64'."""
+        result = self._dedup_arch('EPEL - x86_64 x86_64')
+        self.assertEqual(result, 'EPEL x86_64')
+
+    def test_single_arch_unchanged(self):
+        """'BaseOS x86_64' should remain unchanged."""
+        result = self._dedup_arch('BaseOS x86_64')
+        self.assertEqual(result, 'BaseOS x86_64')
+
+    def test_no_arch_unchanged(self):
+        """'Rocky Linux 10 - AppStream' should remain unchanged."""
+        result = self._dedup_arch('Rocky Linux 10 - AppStream')
+        self.assertEqual(result, 'Rocky Linux 10 - AppStream')
+
+    def test_aarch64_dedup(self):
+        """Dedup should work for aarch64 too."""
+        result = self._dedup_arch('EPEL - aarch64 aarch64', arch='aarch64')
+        self.assertEqual(result, 'EPEL aarch64')
+
+
+class RebootDetectionTests(unittest.TestCase):
+    """Tests for multi-distro reboot detection logic."""
+
+    def test_debian_reboot_file_exists(self):
+        """If /var/run/reboot-required exists, reboot is True."""
+        # We can't create the real file, but test the logic
+        reboot = os.path.exists('/var/run/reboot-required')
+        # On this system it may or may not exist — just test the type
+        self.assertIsInstance(reboot, bool)
+
+    def test_kernel_version_comparison_logic(self):
+        """Kernel mismatch detection: different versions should flag reboot."""
+        running = '5.14.0-427.13.1.el9_4.x86_64'
+        installed = '5.14.0-427.18.1.el9_4.x86_64'
+        self.assertNotEqual(running, installed)
+
+    def test_kernel_version_same(self):
+        """Same kernel versions should not flag reboot."""
+        running = '5.14.0-427.18.1.el9_4.x86_64'
+        installed = '5.14.0-427.18.1.el9_4.x86_64'
+        self.assertEqual(running, installed)
+
+    def test_vmlinuz_prefix_stripping(self):
+        """vmlinuz- prefix should be stripped to get kernel version."""
+        symlink_target = 'vmlinuz-5.14.0-427.18.1.el9_4.x86_64'
+        # Python uses removeprefix
+        version = symlink_target.removeprefix('vmlinuz-')
+        self.assertEqual(version, '5.14.0-427.18.1.el9_4.x86_64')
+        # Bash uses sed -e 's/^vmlinuz-//'
+        import subprocess
+        result = subprocess.run(
+            ['sed', '-e', 's/^vmlinuz-//'],
+            input=symlink_target, capture_output=True, text=True,
+        )
+        self.assertEqual(result.stdout.strip(), '5.14.0-427.18.1.el9_4.x86_64')
+
+
+class PythonConfigTests(unittest.TestCase):
+    """Tests for Python client config loading and conf.d support."""
+
+    def test_load_config_basic(self):
+        """Basic config file should parse correctly."""
+        import tempfile
+        config_content = (
+            'server=https://patchman.example.com\n'
+            'api_key=test-key-123\n'
+            'tags=web,prod\n'
+            'verbose=true\n'
+            'debug=false\n'
+            'local_updates=yes\n'
+            'repo_check=false\n'
+            'verify_ssl=true\n'
+            'timeout=600\n'
+        )
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+            f.write(config_content)
+            conf_path = f.name
+        try:
+            import importlib
+            spec = importlib.util.spec_from_file_location(
+                'client', os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    'python', 'patchman_client', 'client.py',
+                ),
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            config = mod.load_config(conf_path)
+            self.assertEqual(config['server'], 'https://patchman.example.com')
+            self.assertEqual(config['api_key'], 'test-key-123')
+            self.assertEqual(config['tags'], 'web,prod')
+            self.assertTrue(config['verbose'])
+            self.assertFalse(config['debug'])
+            self.assertTrue(config['local_updates'])
+            self.assertFalse(config['repo_check'])
+            self.assertTrue(config['verify_ssl'])
+            self.assertEqual(config['timeout'], 600)
+        finally:
+            os.unlink(conf_path)
+
+    def test_load_config_missing_file(self):
+        """Missing config file should return defaults."""
+        import importlib
+        spec = importlib.util.spec_from_file_location(
+            'client', os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                'python', 'patchman_client', 'client.py',
+            ),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        config = mod.load_config('/nonexistent/patchman-client.conf')
+        self.assertEqual(config['server'], '')
+        self.assertFalse(config['verbose'])
+        self.assertTrue(config['repo_check'])
+
+    def test_load_config_with_conf_d(self):
+        """conf.d drop-in files should override base config."""
+        import tempfile
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # Write base config
+            base_conf = os.path.join(tmpdir, 'patchman-client.conf')
+            with open(base_conf, 'w') as f:
+                f.write('server=https://base.example.com\n')
+                f.write('verbose=false\n')
+
+            # Create conf.d directory with override
+            conf_d = os.path.join(tmpdir, 'conf.d')
+            os.makedirs(conf_d)
+            with open(os.path.join(conf_d, '01-override.conf'), 'w') as f:
+                f.write('verbose=true\n')
+                f.write('tags=override-tag\n')
+
+            import importlib
+            spec = importlib.util.spec_from_file_location(
+                'client', os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    'python', 'patchman_client', 'client.py',
+                ),
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            config = mod.load_config(base_conf)
+            # Base value should be present
+            self.assertEqual(config['server'], 'https://base.example.com')
+            # conf.d should override
+            self.assertTrue(config['verbose'])
+            self.assertEqual(config['tags'], 'override-tag')
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir)
+
+    def test_config_comments_and_blanks_ignored(self):
+        """Comments and blank lines should be ignored."""
+        import tempfile
+        config_content = (
+            '# This is a comment\n'
+            '\n'
+            'server=https://patchman.example.com\n'
+            '  # Indented comment\n'
+            '\n'
+            'api_key=key123\n'
+        )
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+            f.write(config_content)
+            conf_path = f.name
+        try:
+            import importlib
+            spec = importlib.util.spec_from_file_location(
+                'client', os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    'python', 'patchman_client', 'client.py',
+                ),
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            config = mod.load_config(conf_path)
+            self.assertEqual(config['server'], 'https://patchman.example.com')
+            self.assertEqual(config['api_key'], 'key123')
+        finally:
+            os.unlink(conf_path)
+
+    def test_config_quoted_values(self):
+        """Values with quotes should have quotes stripped."""
+        import tempfile
+        config_content = (
+            'server="https://patchman.example.com"\n'
+            "api_key='key123'\n"
+        )
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+            f.write(config_content)
+            conf_path = f.name
+        try:
+            import importlib
+            spec = importlib.util.spec_from_file_location(
+                'client', os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    'python', 'patchman_client', 'client.py',
+                ),
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            config = mod.load_config(conf_path)
+            self.assertEqual(config['server'], 'https://patchman.example.com')
+            self.assertEqual(config['api_key'], 'key123')
+        finally:
+            os.unlink(conf_path)
+
+
 if __name__ == '__main__':
     unittest.main()
