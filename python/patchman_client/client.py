@@ -61,6 +61,7 @@ class PatchmanClient:
         repo_check: bool = True,
         verify_ssl: bool = True,
         timeout: int = 300,
+        protocol: int = 2,
     ):
         self.server = server.rstrip('/') if server else ''
         self.api_key = api_key
@@ -72,6 +73,7 @@ class PatchmanClient:
         self.repo_check = repo_check
         self.verify_ssl = verify_ssl
         self.timeout = timeout
+        self.protocol = protocol
 
         # System info (populated by collect methods)
         self.kernel = ''
@@ -1131,7 +1133,7 @@ class PatchmanClient:
     def build_report(self) -> dict[str, Any]:
         """Build the JSON report payload."""
         return {
-            'protocol': 2,
+            'protocol': self.protocol,
             'hostname': self.hostname,
             'arch': self.arch,
             'kernel': self.kernel,
@@ -1334,6 +1336,8 @@ def main() -> int:
                         help='Override hostname')
     parser.add_argument('-k', '--api-key', metavar='KEY',
                         help='API key for authentication')
+    parser.add_argument('-p', '--protocol', metavar='PROTOCOL', type=int,
+                        default=2, help='Protocol version (default: 2)')
     parser.add_argument('--no-verify-ssl', action='store_true',
                         help='Disable SSL certificate verification')
     parser.add_argument('--version', action='version',
@@ -1354,6 +1358,14 @@ def main() -> int:
     repo_check = not args.no_repo_check and config['repo_check']
     verify_ssl = not args.no_verify_ssl and config['verify_ssl']
     timeout = config['timeout']
+
+    # Validate protocol
+    supported_protocols = [2]
+    if args.protocol not in supported_protocols:
+        print(f'Error: unsupported protocol {args.protocol}. '
+              f'Supported: {", ".join(str(p) for p in supported_protocols)}',
+              file=sys.stderr)
+        return 1
 
     if not server:
         print('patchman-client: server not configured.', file=sys.stderr)
@@ -1401,6 +1413,7 @@ def main() -> int:
         repo_check=repo_check,
         verify_ssl=verify_ssl,
         timeout=timeout,
+        protocol=args.protocol,
     )
 
     # Normal operation: collect and submit report

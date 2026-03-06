@@ -53,6 +53,24 @@ The server URL and API key can be provided via:
 		caFile := viper.GetString("ca_file")
 		noRepoCheck := viper.GetBool("no_repo_check")
 		localUpdates := viper.GetBool("local_updates")
+		protocol := viper.GetInt("protocol")
+		if protocol == 0 {
+			protocol = 2
+		}
+
+		// Validate protocol
+		supportedProtocols := []int{2}
+		validProtocol := false
+		for _, p := range supportedProtocols {
+			if protocol == p {
+				validProtocol = true
+				break
+			}
+		}
+		if !validProtocol {
+			fmt.Fprintf(os.Stderr, "Error: unsupported protocol %d. Supported: 2\n", protocol)
+			os.Exit(1)
+		}
 
 		// Validate required config (unless dry-run)
 		if serverURL == "" && !dryRun {
@@ -98,6 +116,10 @@ The server URL and API key can be provided via:
 
 		// Create report
 		rpt := report.NewReport(osInfo)
+		rpt.Protocol = protocol
+		if hostname := viper.GetString("hostname"); hostname != "" {
+			rpt.Hostname = hostname
+		}
 		rpt.SetTags(tags)
 
 		// Collect packages
@@ -345,5 +367,9 @@ The server URL and API key can be provided via:
 func init() {
 	// Bind flags to viper for config file support
 	submitCmd.Flags().Bool("dry-run", false, "collect and display report without submitting")
+	submitCmd.Flags().StringP("hostname", "H", "", "override hostname")
+	submitCmd.Flags().IntP("protocol", "p", 2, "protocol version (currently supported: 2)")
 	viper.BindPFlag("dry-run", submitCmd.Flags().Lookup("dry-run"))
+	viper.BindPFlag("hostname", submitCmd.Flags().Lookup("hostname"))
+	viper.BindPFlag("protocol", submitCmd.Flags().Lookup("protocol"))
 }
