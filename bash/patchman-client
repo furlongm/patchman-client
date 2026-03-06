@@ -1,5 +1,5 @@
 #!/bin/bash
-# shellcheck disable=SC1001,SC1090,SC1091,SC2001,SC2002,SC2012,SC2013,SC2016,SC2034,SC2045,SC2046,SC2086,SC2143,SC2153,SC2154,SC2181,SC2206,SC2219,SC2236
+# shellcheck disable=SC1001,SC1090,SC1091,SC2001,SC2012,SC2013,SC2016,SC2034,SC2045,SC2086,SC2153,SC2154,SC2206
 
 export LC_ALL=C
 export FULL_IFS=$' \t\n'
@@ -135,7 +135,7 @@ check_conf() {
 
     conf_dir=$(dirname "${conf}")/conf.d
     if [ -d "${conf_dir}" ] ; then
-        let f=$(find "${conf_dir}" -maxdepth 1 -type f | wc -l)
+        f=$(find "${conf_dir}" -maxdepth 1 -type f | wc -l)
         if [ ${f} -gt 0 ] ; then
             source "${conf_dir}"/*
         fi
@@ -465,7 +465,7 @@ get_host_data() {
 
 get_yum_updates() {
     yum -q makecache 2>/dev/null
-    let yum_major_version=$(yum --version | head -n 1 | cut -d "." -f 1)
+    yum_major_version=$(yum --version | head -n 1 | cut -d "." -f 1)
     if [ ${yum_major_version} -gt 3 ] ; then
         yum -q -C --security list updates --disablerepo="*" --enablerepo="${1}" 2>&1 \
         | tr "\n" "#" | sed -e 's/# / /g' | tr "#" "\n" \
@@ -540,7 +540,7 @@ get_repos() {
             echo 'Finding yum repos...'
         fi
         releasever=$(rpm -q --qf "%{version}\n" --whatprovides redhat-release | sort -u)
-        let numrepos=$(ls /etc/yum.repos.d/*.repo | wc -l)
+        numrepos=$(ls /etc/yum.repos.d/*.repo | wc -l)
         if [ ${numrepos} -gt 0 ] ; then
             priorities=$(sed -n -e "/^name/h; /priority *=/{ G; s/\n/ /; s/ity *= *\(.*\)/ity=\1/ ; s/\$releasever/${releasever}/ ; s/name *= *\(.*\)/'\1 ${host_arch}'/ ; p }" /etc/yum.repos.d/*.repo)
         fi
@@ -559,8 +559,7 @@ get_repos() {
             if [ "${priority}" == "" ] ; then
                 priority=99
             fi
-            redhat_repo=$(echo ${i} | grep -e "https://.*/XMLRPC.*\|https://cdn[-[a-z]*]*.redhat.com/.*")
-            if [ ${?} == 0 ] || ${local_updates} ; then
+            if echo ${i} | grep -qe "https://.*/XMLRPC.*\|https://cdn[-[a-z]*]*.redhat.com/.*" || ${local_updates} ; then
                 if ${verbose} ; then
                     echo "Finding updates locally for ${id}"
                 fi
@@ -606,7 +605,7 @@ get_repos() {
         if ${verbose} ; then
             echo 'Finding zypper repos...'
         fi
-        if [ $(zypper -q --no-refresh lr --details | head -n 1 | grep Keep) ] ; then
+        if zypper -q --no-refresh lr --details | head -n 1 | grep -q Keep ; then
             zypper_lr_cols='{print "${os}" $3 "|" $2 "|" $8 "|" $10}'
         else
             zypper_lr_cols='{print "${os}" $3 "|" $2 "|" $7 "|" $9}'
@@ -614,8 +613,7 @@ get_repos() {
         for i in $(zypper -q --no-refresh lr -E -u --details | grep -v ^$ | tail -n +3 | awk -F"|" "${zypper_lr_cols}" | sed -e "s/\${os}/${PRETTY_NAME}/" -e "s/ *|/ ${host_arch} |/" -e "s/\?[a-zA-Z0-9_-]* *$//" -e "s/^/'/g" -e "s/ *| */' '/g" -e "s/ *$/'/g") ; do
             echo \'rpm\' ${i} >> "${tmpfile_rep}"
             id=$(echo ${i} | cut -d \' -f 4)
-            suse_repo=$(echo ${i} | grep -e "https://updates.suse.com/.*")
-            if [ ${?} == 0 ] || ${local_updates} ; then
+            if echo ${i} | grep -qe "https://updates.suse.com/.*" || ${local_updates} ; then
                 if ${verbose} ; then
                     echo "Finding updates locally for ${id}"
                 fi
@@ -823,7 +821,7 @@ build_repos_json() {
         # Collect URLs (all remaining parts)
         local urls_json="["
         local url_first=true
-        for ((i=${url_start}; i<${#parts[@]}; i++)); do
+        for ((i=url_start; i<${#parts[@]}; i++)); do
             if ! ${url_first} ; then
                 urls_json="${urls_json},"
             fi
@@ -1103,7 +1101,7 @@ if ! check_command_exists awk || \
 fi
 
 os_lock_dir=/var/lock
-lock_dir=$(dirname $(readlink -f ${os_lock_dir}))/patchman
+lock_dir=$(dirname "$(readlink -f ${os_lock_dir})")/patchman
 mkdir -p "${lock_dir}"
 if [ ! -d "${lock_dir}" ] ; then
     echo "Lock directory does not exist, exiting: ${lock_dir}"
