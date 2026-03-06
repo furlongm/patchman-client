@@ -8,7 +8,7 @@ submits reports to a Patchman server.
 
 Usage:
     patchman-client.py [-v] [-d] [-n] [-u] [-s SERVER] [-c FILE]
-                       [-t TAGS] [-h HOSTNAME] [-k API_KEY] [--post-hook]
+                       [-t TAGS] [-h HOSTNAME] [-k API_KEY]
 
 Requirements:
     - Python 3.6+
@@ -1335,8 +1335,6 @@ def main() -> int:
                         help='Override hostname')
     parser.add_argument('-k', '--api-key', metavar='KEY',
                         help='API key for authentication')
-    parser.add_argument('--post-hook', action='store_true',
-                        help='Run as package manager hook (implies -n)')
     parser.add_argument('--no-verify-ssl', action='store_true',
                         help='Disable SSL certificate verification')
     parser.add_argument('--version', action='version',
@@ -1346,16 +1344,6 @@ def main() -> int:
 
     # Load config file
     config = load_config(args.config)
-
-    # --post-hook: validate config and force -n
-    if args.post_hook:
-        if not config['server']:
-            print('patchman-client: Server not configured.', file=sys.stderr)
-            print(f'  Edit {args.config} and set server= to your patchman server URL.',
-                  file=sys.stderr)
-            return 1
-        args.no_repo_check = True
-        print('Sending report to patchman server...')
 
     # Command line overrides config file
     server = args.server or config['server']

@@ -8,4 +8,4 @@ Target = *
 [Action]
 Description = Sending report to patchman server...
 When = PostTransaction
-Exec = /usr/sbin/patchman-client --post-hook
+Exec = /usr/sbin/patchman-client -n

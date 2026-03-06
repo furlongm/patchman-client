@@ -52,19 +52,7 @@ The server URL and API key can be provided via:
 		noVerifySSL := viper.GetBool("no_verify_ssl")
 		caFile := viper.GetString("ca_file")
 		noRepoCheck := viper.GetBool("no_repo_check")
-		postHook := viper.GetBool("post_hook")
 		localUpdates := viper.GetBool("local_updates")
-
-		// --post-hook: validate config and force no-repo-check
-		if postHook {
-			if serverURL == "" {
-				fmt.Fprintln(os.Stderr, "patchman-client: Server not configured.")
-				fmt.Fprintln(os.Stderr, "  Edit config file and set server= to your patchman server URL.")
-				os.Exit(1)
-			}
-			noRepoCheck = true
-			fmt.Println("Sending report to patchman server...")
-		}
 
 		// Validate required config (unless dry-run)
 		if serverURL == "" && !dryRun {
@@ -351,7 +339,5 @@ The server URL and API key can be provided via:
 func init() {
 	// Bind flags to viper for config file support
 	submitCmd.Flags().Bool("dry-run", false, "collect and display report without submitting")
-	submitCmd.Flags().Bool("post-hook", false, "run as package manager hook (implies -n)")
 	viper.BindPFlag("dry-run", submitCmd.Flags().Lookup("dry-run"))
-	viper.BindPFlag("post_hook", submitCmd.Flags().Lookup("post-hook"))
 }
