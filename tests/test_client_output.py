@@ -22,7 +22,7 @@ class ClientOutputComparisonTests(unittest.TestCase):
     def test_os_string_with_cpe_name(self):
         """Test that both clients format OS string with CPE name consistently."""
         # Sample os-release content for Rocky Linux
-        os_release_content = '''
+        os_release_content = """
 NAME="Rocky Linux"
 VERSION="10.1 (Red Quartz)"
 ID="rocky"
@@ -30,7 +30,7 @@ ID_LIKE="rhel centos fedora"
 VERSION_ID="10.1"
 PRETTY_NAME="Rocky Linux 10.1 (Red Quartz)"
 CPE_NAME="cpe:/o:rocky:rocky:10"
-'''
+"""
         # Test that CPE name is included in os-release
         self.assertIn('cpe:/o:rocky:rocky:10', os_release_content)
 
@@ -443,15 +443,15 @@ class RepoFormatTests(unittest.TestCase):
 
         # Simulated apt-cache policy lines
         policy_lines = [
-            " 500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages",
-            " 500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages",
-            " 100 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages",
+            ' 500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages',
+            ' 500 http://archive.ubuntu.com/ubuntu noble/universe amd64 Packages',
+            ' 100 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages',
         ]
 
         repo_pattern = re.compile(r'^\s*(\d+)\s+(https?://\S+)\s+(\S+)\s+(\S+)')
-        os_name = "Ubuntu"
-        version_id = "24.04"
-        arch = "amd64"
+        os_name = 'Ubuntu'
+        version_id = '24.04'
+        arch = 'amd64'
 
         repos = []
         for line in policy_lines:
@@ -512,14 +512,14 @@ class RepoFormatTests(unittest.TestCase):
         """
         # Simulated zypper output with Keep column
         zypper_output = (
-            "#  | Alias      | Name    | Enabled | GPG Check | Refresh | Keep "
-            "| Priority | Type   | URI                                        | Service\n"
-            "---+------------+---------+---------+-----------+---------+------"
-            "+----------+--------+--------------------------------------------+---------\n"
-            " 1 | games      | games   | Yes     | (r ) Yes  | No      | -    "
-            "|   99     | rpm-md | https://download.opensuse.org/games/16.0/  |\n"
-            " 2 | packman    | packman | Yes     | (r ) Yes  | Yes     | -    "
-            "|   98     | rpm-md | https://ftp.gwdg.de/pub/packman/suse/16.0/ |"
+            '#  | Alias      | Name    | Enabled | GPG Check | Refresh | Keep '
+            '| Priority | Type   | URI                                        | Service\n'
+            '---+------------+---------+---------+-----------+---------+------'
+            '+----------+--------+--------------------------------------------+---------\n'
+            ' 1 | games      | games   | Yes     | (r ) Yes  | No      | -    '
+            '|   99     | rpm-md | https://download.opensuse.org/games/16.0/  |\n'
+            ' 2 | packman    | packman | Yes     | (r ) Yes  | Yes     | -    '
+            '|   98     | rpm-md | https://ftp.gwdg.de/pub/packman/suse/16.0/ |'
         )
 
         lines = zypper_output.splitlines()
@@ -888,7 +888,7 @@ class YumRepolistAwkTests(unittest.TestCase):
     """
 
     AWK_CMD = (
-        r"""awk 'BEGIN{n=0} { if ($1=="Repo-id") {if(n>0){print ""} n++; url=0; printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'"'"' "} if ($1=="Repo-name") {printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'" x86_64'"' "} if ($1=="Repo-mirrors" || $1=="Repo-metalink") {printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'"'"' "} if ($1=="Repo-baseurl" || $1=="Repo-baseurl:") { url=1; comma=match($NF,","); if (comma) out=substr($NF,1,comma-1); else out=$NF; printf "'"'"'"out"'"'"' "; } else { if (url==1) { if ($1==":") { comma=match($NF,","); if (comma) out=substr($NF,1,comma-1); else out=$NF; printf "'"'"'"out"'"'"' "; } else {url=0} } } } END{if(n>0) print ""}'"""
+        r"""awk 'BEGIN{n=0} { if ($1=="Repo-id") {if(n>0){print ""} n++; url=0; printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'"'"' "} if ($1=="Repo-name") {printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'" x86_64'"' "} if ($1=="Repo-mirrors" || $1=="Repo-metalink") {printf "'"'"'"; for (i=3; i<NF; i++) printf $i " "; printf $NF"'"'"' "} if ($1=="Repo-baseurl" || $1=="Repo-baseurl:") { url=1; comma=match($NF,","); if (comma) out=substr($NF,1,comma-1); else out=$NF; printf "'"'"'"out"'"'"' "; } else { if (url==1) { if ($1==":") { comma=match($NF,","); if (comma) out=substr($NF,1,comma-1); else out=$NF; printf "'"'"'"out"'"'"' "; } else {url=0} } } } END{if(n>0) print ""}'"""  # noqa: E501
     )
 
     def _run_awk(self, input_text):
@@ -1056,7 +1056,6 @@ class PythonClientYumRepoTests(unittest.TestCase):
 
     def _collect(self, yum_output, arch='x86_64'):
         """Create a PatchmanClient, mock yum output, and collect repos."""
-        from unittest.mock import patch, PropertyMock
         import sys
         sys.path.insert(0, os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
