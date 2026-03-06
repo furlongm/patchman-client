@@ -57,12 +57,12 @@ func GetAptRepos(os_info si.OSInfo) ([]AptRepo, error) {
 	}
 
 	apt_repos := []AptRepo{}
+	repoLineRe := regexp.MustCompile(`^ *[0-9]{1,5} mirror\+file|http(s)?:`)
 	for _, line := range strings.Split(string(cmd), "\n") {
 		if strings.Contains(line, "Translation") {
 			continue
 		}
-		match, _ := regexp.MatchString("^ *[0-9]{1,5} mirror\\+file|http(s)?:", line)
-		if !match {
+		if !repoLineRe.MatchString(line) {
 			continue
 		}
 		v := strings.Split(line, " ")

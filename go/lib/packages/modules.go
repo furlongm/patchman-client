@@ -25,7 +25,7 @@ func GetInstalledDNFModules() ([]DNFModule, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cmd == nil || len(cmd) == 0 {
+	if len(cmd) == 0 {
 		return nil, nil
 	}
 

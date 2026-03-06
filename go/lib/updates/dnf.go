@@ -22,7 +22,7 @@ func GetDNFUpdates() (secUpdates []Update, bugUpdates []Update, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if cmd == nil || len(cmd) == 0 {
+	if len(cmd) == 0 {
 		return nil, nil, nil
 	}
 
