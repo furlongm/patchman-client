@@ -62,6 +62,7 @@ class PatchmanClient:
         verify_ssl: bool = True,
         timeout: int = 300,
         protocol: int = 2,
+        dry_run: bool = False,
     ):
         self.server = server.rstrip('/') if server else ''
         self.api_key = api_key
@@ -74,6 +75,7 @@ class PatchmanClient:
         self.verify_ssl = verify_ssl
         self.timeout = timeout
         self.protocol = protocol
+        self.dry_run = dry_run
 
         # System info (populated by collect methods)
         self.kernel = ''
@@ -1217,6 +1219,24 @@ class PatchmanClient:
     # Main Entry Point
     # -------------------------------------------------------------------------
 
+    def print_summary(self) -> None:
+        """Print a dry-run summary of collected data."""
+        report = self.build_report()
+        print()
+        print('=== Dry Run Summary ===')
+        print(f'Hostname: {self.hostname}')
+        print(f'OS: {self.os_string}')
+        print(f'Arch: {self.arch}')
+        print(f'Kernel: {self.kernel}')
+        print(f'Packages: {len(self.packages)}')
+        print(f'Repos: {len(self.repos)}')
+        print(f'Modules: {len(self.modules)}')
+        print(f'Security updates: {len(self.sec_updates)}')
+        print(f'Bugfix updates: {len(self.bug_updates)}')
+        print(f'Reboot required: {report["reboot_required"]}')
+        if self.tags:
+            print(f'Tags: {",".join(self.tags)}')
+
     def run(self) -> bool:
         """Run the client: collect data and submit report."""
         self.log(f'Patchman Python Client v{__version__}')
@@ -1238,6 +1258,11 @@ class PatchmanClient:
 
         # Collect updates (if local updates enabled)
         self.collect_updates()
+
+        # Dry run: print summary and exit
+        if self.dry_run:
+            self.print_summary()
+            return True
 
         # Submit report
         return self.submit_report()
@@ -1325,6 +1350,8 @@ def main() -> int:
                         help='Skip repository collection')
     parser.add_argument('-u', '--local-updates', action='store_true',
                         help='Find updates locally (for RHEL/SUSE)')
+    parser.add_argument('-y', '--dry-run', action='store_true',
+                        help='Collect data but do not submit')
     parser.add_argument('-s', '--server', metavar='SERVER',
                         help='Patchman server URL')
     parser.add_argument('-c', '--config', metavar='FILE',
@@ -1367,17 +1394,18 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    if not server:
-        print('patchman-client: server not configured.', file=sys.stderr)
-        print(f'  Edit {args.config} and set server= to your patchman server URL.',
-              file=sys.stderr)
-        return 1
+    if not args.dry_run:
+        if not server:
+            print('patchman-client: server not configured.', file=sys.stderr)
+            print(f'  Edit {args.config} and set server= to your patchman server URL.',
+                  file=sys.stderr)
+            return 1
 
-    if 'patchman.example.com' in server:
-        print('patchman-client: server not configured.', file=sys.stderr)
-        print(f'  Edit {args.config} and set server= to your patchman server URL.',
-              file=sys.stderr)
-        return 1
+        if 'patchman.example.com' in server:
+            print('patchman-client: server not configured.', file=sys.stderr)
+            print(f'  Edit {args.config} and set server= to your patchman server URL.',
+                  file=sys.stderr)
+            return 1
 
     # Acquire exclusive lock to prevent concurrent runs
     lock_fd = None
@@ -1414,6 +1442,7 @@ def main() -> int:
         verify_ssl=verify_ssl,
         timeout=timeout,
         protocol=args.protocol,
+        dry_run=args.dry_run,
     )
 
     # Normal operation: collect and submit report

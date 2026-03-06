@@ -366,7 +366,7 @@ The server URL and API key can be provided via:
 
 func init() {
 	// Bind flags to viper for config file support
-	submitCmd.Flags().Bool("dry-run", false, "collect and display report without submitting")
+	submitCmd.Flags().BoolP("dry-run", "y", false, "collect and display report without submitting")
 	submitCmd.Flags().StringP("hostname", "H", "", "override hostname")
 	submitCmd.Flags().IntP("protocol", "p", 2, "protocol version (currently supported: 2)")
 	viper.BindPFlag("dry-run", submitCmd.Flags().Lookup("dry-run"))
