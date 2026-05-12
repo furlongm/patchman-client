@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+
+# Copyright 2025 Marcus Furlong <furlongm@gmail.com>
+#
+# This file is part of Patchman.
+#
+# Patchman is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 only.
+#
+# Patchman is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Patchman. If not, see <http://www.gnu.org/licenses/>
+
+"""patchman-openscap: OpenSCAP CIS benchmark scanner for Patchman.
+
+Runs oscap xccdf eval against the appropriate datastream for the
+detected OS, writes XML results and a structured JSON summary to disk.
+The JSON is picked up by patchman-client for inclusion in host reports.
+
+Exit codes:
+    0 - scan completed successfully
+    1 - error (missing binary, config error, parse failure)
+    2 - prerequisites not installed (oscap or datastream missing)
+"""
+
+import argparse
+import configparser
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from xml.etree import ElementTree
+
+VERSION = '1.0.0'
+
+DEFAULT_CONTENT_DIR = '/usr/share/xml/scap/ssg/content'
+DEFAULT_RESULTS_DIR = '/var/lib/patchman/compliance'
+DEFAULT_CONFIG_FILE = '/etc/patchman/patchman-openscap.conf'
+
+XCCDF_NS = 'http://checklists.nist.gov/xccdf/1.2'
+XCCDF_PREFIX = f'{{{XCCDF_NS}}}'
+
+# OS ID → (datastream pattern, default profile)
+# datastream pattern uses {ver} for version substitution
+OS_MAP = {
+    'rhel': ('ssg-rhel{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis'),
+    'rocky': ('ssg-rhel{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis'),
+    'almalinux': ('ssg-rhel{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis'),
+    'centos': ('ssg-centos{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis'),
+    'fedora': ('ssg-fedora-ds.xml', 'xccdf_org.ssgproject.content_profile_cis'),
+    'debian': ('ssg-debian{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis_level1_server'),
+    'ubuntu': ('ssg-ubuntu{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis_level1_server'),
+    'sles': ('ssg-sle{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis'),
+    'opensuse-leap': ('ssg-sle{ver}-ds.xml', 'xccdf_org.ssgproject.content_profile_cis'),
+}
+
+RESULT_VALUES = ('pass', 'fail', 'error', 'notapplicable', 'notchecked',
+                 'notselected', 'informational', 'fixed')
+
+
+def detect_os():
+    """Parse /etc/os-release and return (os_id, version_major, version_full)."""
+    os_release = {}
+    try:
+        with open('/etc/os-release') as f:
+            for line in f:
+                line = line.strip()
+                if '=' in line:
+                    key, _, val = line.partition('=')
+                    os_release[key] = val.strip('"')
+    except FileNotFoundError:
+        return None, None, None
+
+    os_id = os_release.get('ID', '').lower()
+    version_full = os_release.get('VERSION_ID', '')
+    version_major = version_full.split('.')[0] if version_full else ''
+
+    return os_id, version_major, version_full
+
+
+def resolve_datastream(os_id, version_major, version_full, content_dir):
+    """Map detected OS to a datastream file path."""
+    if os_id not in OS_MAP:
+        return None, None
+
+    pattern, default_profile = OS_MAP[os_id]
+
+    if os_id == 'ubuntu':
+        # ubuntu uses e.g. ssg-ubuntu2204-ds.xml (no dots)
+        ver = version_full.replace('.', '')
+    elif os_id == 'fedora':
+        ver = ''
+    else:
+        ver = version_major
+
+    datastream = pattern.format(ver=ver)
+    datastream_path = os.path.join(content_dir, datastream)
+
+    return datastream_path, default_profile
+
+
+def list_profiles(datastream_path):
+    """Run oscap info to list available profiles in the datastream."""
+    try:
+        result = subprocess.run(
+            ['oscap', 'info', '--profiles', datastream_path],
+            capture_output=True, text=True, timeout=30,
+        )
+    except FileNotFoundError:
+        print('error: oscap binary not found', file=sys.stderr)
+        return 2
+    except subprocess.TimeoutExpired:
+        print('error: oscap info timed out', file=sys.stderr)
+        return 1
+
+    if result.returncode != 0:
+        print(f'error: oscap info failed:\n{result.stderr}', file=sys.stderr)
+        return 1
+
+    print(f'Available profiles in {os.path.basename(datastream_path)}:\n')
+    for line in result.stdout.strip().splitlines():
+        # oscap info --profiles outputs "profile_id:Title"
+        if ':' in line:
+            profile_id, _, title = line.partition(':')
+            print(f'  {profile_id.strip()}')
+            print(f'    {title.strip()}\n')
+        else:
+            print(f'  {line.strip()}')
+
+    return 0
+
+
+def run_scan(datastream_path, profile, results_xml):
+    """Run oscap xccdf eval and return (success, returncode)."""
+    results_dir = os.path.dirname(results_xml)
+    os.makedirs(results_dir, exist_ok=True)
+
+    cmd = [
+        'oscap', 'xccdf', 'eval',
+        '--profile', profile,
+        '--results', results_xml,
+        datastream_path,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=3600,
+        )
+    except FileNotFoundError:
+        print('error: oscap binary not found', file=sys.stderr)
+        return False, 2
+    except subprocess.TimeoutExpired:
+        print('error: oscap scan timed out after 1 hour', file=sys.stderr)
+        return False, 1
+
+    # oscap exit codes: 0=all pass, 1=error, 2=some rules fail (normal)
+    if result.returncode == 1:
+        print(f'error: oscap eval failed:\n{result.stderr}', file=sys.stderr)
+        return False, 1
+
+    return True, result.returncode
+
+
+def parse_results(results_xml):
+    """Parse XCCDF results XML into a structured dict."""
+    tree = ElementTree.parse(results_xml)
+    root = tree.getroot()
+
+    # find the TestResult element
+    test_result = root.find(f'.//{XCCDF_PREFIX}TestResult')
+    if test_result is None:
+        raise ValueError('no TestResult element found in results XML')
+
+    # extract score
+    score_elem = test_result.find(f'{XCCDF_PREFIX}score')
+    score = float(score_elem.text) if score_elem is not None else 0.0
+    score_max = float(score_elem.get('maximum', '100'))
+
+    # extract profile
+    profile_elem = test_result.find(f'{XCCDF_PREFIX}profile')
+    profile_id = profile_elem.get('idref', '') if profile_elem is not None else ''
+
+    # extract target
+    target_elem = test_result.find(f'{XCCDF_PREFIX}target')
+    target = target_elem.text if target_elem is not None else ''
+
+    # extract start/end time
+    start_time = test_result.get('start-time', '')
+    end_time = test_result.get('end-time', '')
+
+    # collect rule results
+    rules = []
+    summary = {v: 0 for v in RESULT_VALUES}
+
+    for rule_result in test_result.findall(f'{XCCDF_PREFIX}rule-result'):
+        rule_id = rule_result.get('idref', '')
+        severity = rule_result.get('severity', 'unknown')
+
+        result_elem = rule_result.find(f'{XCCDF_PREFIX}result')
+        result_val = result_elem.text if result_elem is not None else 'unknown'
+
+        if result_val in summary:
+            summary[result_val] += 1
+
+        rules.append({
+            'id': rule_id,
+            'severity': severity,
+            'result': result_val,
+        })
+
+    return {
+        'profile': profile_id,
+        'target': target,
+        'score': score,
+        'score_maximum': score_max,
+        'start_time': start_time,
+        'end_time': end_time,
+        'summary': summary,
+        'rules': rules,
+    }
+
+
+def build_json_output(scan_results, os_id, os_version, datastream):
+    """Build the final JSON structure for patchman-client consumption."""
+    return {
+        'version': VERSION,
+        'scan_date': datetime.now(timezone.utc).isoformat(),
+        'hostname': platform.node(),
+        'os_id': os_id,
+        'os_version': os_version,
+        'datastream': os.path.basename(datastream),
+        'profile': scan_results['profile'],
+        'target': scan_results['target'],
+        'score': scan_results['score'],
+        'score_maximum': scan_results['score_maximum'],
+        'start_time': scan_results['start_time'],
+        'end_time': scan_results['end_time'],
+        'summary': scan_results['summary'],
+        'rules': scan_results['rules'],
+    }
+
+
+def load_config(config_file):
+    """Load configuration from file, returning a dict of settings."""
+    config = {
+        'profile': '',
+        'content_dir': DEFAULT_CONTENT_DIR,
+        'results_dir': DEFAULT_RESULTS_DIR,
+    }
+
+    if not os.path.isfile(config_file):
+        return config
+
+    cp = configparser.ConfigParser()
+    cp.read(config_file)
+
+    if cp.has_section('compliance'):
+        section = cp['compliance']
+        config['profile'] = section.get('profile', config['profile'])
+        config['content_dir'] = section.get('content_dir', config['content_dir'])
+        config['results_dir'] = section.get('results_dir', config['results_dir'])
+
+    return config
+
+
+def collect_args():
+    """Build argument parser."""
+    parser = argparse.ArgumentParser(
+        description='Patchman OpenSCAP compliance scanner',
+    )
+    parser.add_argument(
+        '--config', '-c',
+        default=DEFAULT_CONFIG_FILE,
+        help=f'config file path (default: {DEFAULT_CONFIG_FILE})',
+    )
+    parser.add_argument(
+        '--profile', '-p',
+        help='XCCDF profile to evaluate (overrides config file)',
+    )
+    parser.add_argument(
+        '--content-dir',
+        help=f'directory containing datastream files (default: {DEFAULT_CONTENT_DIR})',
+    )
+    parser.add_argument(
+        '--results-dir',
+        help=f'directory for scan results (default: {DEFAULT_RESULTS_DIR})',
+    )
+    parser.add_argument(
+        '--list-profiles', '-l',
+        action='store_true',
+        help='list available profiles in the detected datastream and exit',
+    )
+    parser.add_argument(
+        '--dry-run', '-n',
+        action='store_true',
+        help='show what would be done without running the scan',
+    )
+    parser.add_argument(
+        '--force', '-f',
+        action='store_true',
+        help='run scan even if recent results exist',
+    )
+    parser.add_argument(
+        '--version', '-V',
+        action='version',
+        version=f'patchman-openscap {VERSION}',
+    )
+    return parser
+
+
+def main():
+    parser = collect_args()
+    args = parser.parse_args()
+
+    # load config (CLI args override)
+    config = load_config(args.config)
+    profile = args.profile or config['profile']
+    content_dir = args.content_dir or config['content_dir']
+    results_dir = args.results_dir or config['results_dir']
+
+    # detect OS
+    os_id, version_major, version_full = detect_os()
+    if not os_id:
+        print('error: could not detect OS from /etc/os-release', file=sys.stderr)
+        sys.exit(1)
+
+    if os_id not in OS_MAP:
+        print(f'error: unsupported OS: {os_id}', file=sys.stderr)
+        print(f'supported: {", ".join(sorted(OS_MAP.keys()))}', file=sys.stderr)
+        sys.exit(2)
+
+    # check oscap binary
+    if not shutil.which('oscap'):
+        print('error: oscap binary not found — install openscap-scanner', file=sys.stderr)
+        sys.exit(2)
+
+    # resolve datastream
+    datastream_path, default_profile = resolve_datastream(
+        os_id, version_major, version_full, content_dir,
+    )
+    if not datastream_path or not os.path.isfile(datastream_path):
+        print(f'error: datastream not found: {datastream_path}', file=sys.stderr)
+        print('install scap-security-guide (or ssg-debian/ssg-debderived)', file=sys.stderr)
+        sys.exit(2)
+
+    # use default profile if none specified
+    if not profile:
+        profile = default_profile
+
+    # list profiles mode
+    if args.list_profiles:
+        sys.exit(list_profiles(datastream_path))
+
+    # dry-run mode
+    if args.dry_run:
+        print(f'OS:         {os_id} {version_full}')
+        print(f'Datastream: {datastream_path}')
+        print(f'Profile:    {profile}')
+        print(f'Results:    {results_dir}/latest.xml')
+        print(f'JSON:       {results_dir}/latest.json')
+        sys.exit(0)
+
+    # check for recent results (skip if --force)
+    results_json = os.path.join(results_dir, 'latest.json')
+    if not args.force and os.path.isfile(results_json):
+        try:
+            mtime = os.path.getmtime(results_json)
+            age_hours = (datetime.now(timezone.utc).timestamp() - mtime) / 3600
+            if age_hours < 24:
+                print(f'recent results exist ({age_hours:.0f}h old), use --force to rescan')
+                sys.exit(0)
+        except OSError:
+            pass
+
+    # run the scan
+    results_xml = os.path.join(results_dir, 'latest.xml')
+    print(f'scanning {os_id} {version_full} with profile {profile}...')
+    success, retcode = run_scan(datastream_path, profile, results_xml)
+    if not success:
+        sys.exit(retcode)
+
+    # parse results
+    try:
+        scan_results = parse_results(results_xml)
+    except (ElementTree.ParseError, ValueError) as e:
+        print(f'error: failed to parse results XML: {e}', file=sys.stderr)
+        sys.exit(1)
+
+    # build and write JSON
+    output = build_json_output(scan_results, os_id, version_full, datastream_path)
+    os.makedirs(results_dir, exist_ok=True)
+    with open(results_json, 'w') as f:
+        json.dump(output, f, indent=2)
+
+    # summary
+    s = output['summary']
+    total = s['pass'] + s['fail']
+    pct = (s['pass'] / total * 100) if total > 0 else 0
+    print(f'score: {output["score"]:.1f}/{output["score_maximum"]:.0f}')
+    print(f'rules: {s["pass"]} pass, {s["fail"]} fail, '
+          f'{s["notapplicable"]} n/a, {s["error"]} error')
+    print(f'compliance: {pct:.0f}%')
+    print(f'results written to {results_json}')
+
+
+if __name__ == '__main__':
+    main()

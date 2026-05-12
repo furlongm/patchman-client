@@ -1,0 +1,18 @@
+[Unit]
+Description=Patchman OpenSCAP compliance scan
+Documentation=https://github.com/furlongm/patchman
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/patchman-openscap --force
+Nice=19
+IOSchedulingClass=idle
+
+# Sandboxing
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/patchman/compliance
+ReadOnlyPaths=/usr/share/xml/scap
+PrivateTmp=true
+NoNewPrivileges=true

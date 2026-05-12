@@ -49,6 +49,16 @@ This package provides the Go implementation of the patchman client.
 It is a compiled binary with no runtime dependencies.
 It uses the REST API (protocol 2) only.
 
+%package -n patchman-openscap
+Summary:        Patchman OpenSCAP compliance scanner
+Requires:       python3 openscap-scanner scap-security-guide
+
+%description -n patchman-openscap
+Runs OpenSCAP CIS benchmark scans and writes structured JSON results
+to disk for inclusion in patchman client reports.
+Auto-detects the OS and selects the appropriate SCAP datastream.
+Requires scap-security-guide content for the target OS.
+
 %prep
 %autosetup
 
@@ -75,6 +85,13 @@ install -D -m 644 hooks/yum/patchman.py %{buildroot}%{_prefix}/lib/yum-plugins/p
 # Systemd files (in base package)
 install -D -m 644 etc/systemd/patchman-client.service %{buildroot}%{_unitdir}/patchman-client.service
 install -D -m 644 etc/systemd/patchman-client.timer %{buildroot}%{_unitdir}/patchman-client.timer
+
+# OpenSCAP compliance scanner
+install -D -m 755 openscap/patchman-openscap %{buildroot}%{_sbindir}/patchman-openscap
+install -D -m 644 openscap/patchman-openscap.conf %{buildroot}%{_sysconfdir}/patchman/patchman-openscap.conf
+install -D -m 644 etc/systemd/patchman-openscap.service %{buildroot}%{_unitdir}/patchman-openscap.service
+install -D -m 644 etc/systemd/patchman-openscap.timer %{buildroot}%{_unitdir}/patchman-openscap.timer
+install -d %{buildroot}/var/lib/patchman/compliance
 
 %post bash
 alternatives --install %{_sbindir}/patchman-client patchman-client %{_sbindir}/patchman-client-bash 30
@@ -121,6 +138,14 @@ fi
 %files go
 %license LICENSE
 %{_sbindir}/patchman-client-go
+
+%files -n patchman-openscap
+%license LICENSE
+%{_sbindir}/patchman-openscap
+%config(noreplace) %{_sysconfdir}/patchman/patchman-openscap.conf
+%{_unitdir}/patchman-openscap.service
+%{_unitdir}/patchman-openscap.timer
+%dir /var/lib/patchman/compliance
 
 %changelog
 * Sat Feb 07 2026 Marcus Furlong <furlongm@gmail.com> - 4.0.8-1

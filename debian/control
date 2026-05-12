@@ -54,3 +54,16 @@ Description: Patchman client - Go implementation
  This package provides the Go implementation of the patchman client.
  It is a compiled binary with no runtime dependencies.
  It uses the REST API (protocol 2) only.
+
+Package: patchman-openscap
+Architecture: all
+Depends: ${misc:Depends}, python3, openscap-scanner, ssg-debian | ssg-debderived
+Description: Patchman OpenSCAP compliance scanner
+ Runs OpenSCAP CIS benchmark scans and writes structured JSON results
+ to disk for inclusion in patchman client reports.
+ .
+ Auto-detects the OS and selects the appropriate SCAP datastream.
+ Results are picked up by patchman-client on the next report submission.
+ .
+ Requires scap-security-guide content (ssg-debian, ssg-debderived,
+ or scap-security-guide) for the target OS.
