@@ -64,18 +64,19 @@ type Update struct {
 
 // Report is the full report payload (matches server ReportUploadSerializer)
 type Report struct {
-	Protocol       int       `json:"protocol"`
-	Hostname       string    `json:"hostname"`
-	Arch           string    `json:"arch"`
-	Kernel         string    `json:"kernel"`
-	OS             string    `json:"os"`
-	Tags           []string  `json:"tags,omitempty"`
-	RebootRequired bool      `json:"reboot_required"`
-	Packages       []Package `json:"packages,omitempty"`
-	Repos          []Repo    `json:"repos,omitempty"`
-	Modules        []Module  `json:"modules,omitempty"`
-	SecUpdates     []Update  `json:"sec_updates,omitempty"`
-	BugUpdates     []Update  `json:"bug_updates,omitempty"`
+	Protocol       int              `json:"protocol"`
+	Hostname       string           `json:"hostname"`
+	Arch           string           `json:"arch"`
+	Kernel         string           `json:"kernel"`
+	OS             string           `json:"os"`
+	Tags           []string         `json:"tags,omitempty"`
+	RebootRequired bool             `json:"reboot_required"`
+	Packages       []Package        `json:"packages,omitempty"`
+	Repos          []Repo           `json:"repos,omitempty"`
+	Modules        []Module         `json:"modules,omitempty"`
+	SecUpdates     []Update         `json:"sec_updates,omitempty"`
+	BugUpdates     []Update         `json:"bug_updates,omitempty"`
+	Compliance     *json.RawMessage `json:"compliance,omitempty"`
 }
 
 // SubmitResponse represents the API response
@@ -304,6 +305,17 @@ func (r *Report) AddBugfixUpdates(upds []updates.Update) {
 	}
 }
 
+// LoadCompliance loads compliance JSON from disk if it exists.
+func (r *Report) LoadCompliance() {
+	const complianceFile = "/var/lib/patchman/compliance/latest.json"
+	data, err := os.ReadFile(complianceFile)
+	if err != nil {
+		return
+	}
+	raw := json.RawMessage(data)
+	r.Compliance = &raw
+}
+
 // ToJSON serializes the report to JSON
 func (r *Report) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(r, "", "  ")
@@ -315,6 +327,8 @@ type SubmitOptions struct {
 	APIKey     string
 	VerifySSL  bool
 	CAFile     string // Path to custom CA certificate file
+	ClientCert string // Path to client certificate for mTLS
+	ClientKey  string // Path to client key for mTLS
 	Timeout    time.Duration
 	MaxRetries int
 }
@@ -356,6 +370,19 @@ func (r *Report) SubmitWithOptions(opts SubmitOptions) (*SubmitResponse, error) 
 			return nil, fmt.Errorf("failed to parse CA certificate")
 		}
 		tlsConfig.RootCAs = caCertPool
+	}
+
+	// Load client certificate for mTLS
+	if opts.ClientCert != "" {
+		keyFile := opts.ClientKey
+		if keyFile == "" {
+			keyFile = opts.ClientCert
+		}
+		clientCert, err := tls.LoadX509KeyPair(opts.ClientCert, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{clientCert}
 	}
 
 	// Create HTTP client

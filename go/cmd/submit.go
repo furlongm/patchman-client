@@ -19,6 +19,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -52,6 +53,8 @@ The server URL and API key can be provided via:
 		tags := viper.GetString("tags")
 		noVerifySSL := viper.GetBool("no_verify_ssl")
 		caFile := viper.GetString("ca_file")
+		clientCert := viper.GetString("client_cert")
+		clientKey := viper.GetString("client_key")
 		noRepoCheck := viper.GetBool("no_repo_check")
 		localUpdates := viper.GetBool("local_updates")
 		protocol := viper.GetInt("protocol")
@@ -305,6 +308,27 @@ The server URL and API key can be provided via:
 			}
 		}
 
+		// Regenerate compliance data if requested
+		if viper.GetBool("regenerate_compliance") {
+			if verbose {
+				fmt.Println("Running patchman-openscap to regenerate compliance data...")
+			}
+			regenCmd := exec.Command("patchman-openscap", "--force")
+			regenCmd.Stdout = os.Stdout
+			regenCmd.Stderr = os.Stderr
+			if err := regenCmd.Run(); err != nil {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "Warning: patchman-openscap failed: %v\n", err)
+				}
+			}
+		}
+
+		// Load compliance data if available
+		rpt.LoadCompliance()
+		if rpt.Compliance != nil && verbose {
+			fmt.Println("  Loaded compliance data")
+		}
+
 		// Debug: print JSON
 		if debug {
 			jsonData, _ := rpt.ToJSON()
@@ -385,6 +409,8 @@ The server URL and API key can be provided via:
 			APIKey:     apiKey,
 			VerifySSL:  !noVerifySSL,
 			CAFile:     caFile,
+			ClientCert: clientCert,
+			ClientKey:  clientKey,
 			MaxRetries: 3,
 		})
 		if err != nil {

@@ -40,10 +40,22 @@ except ImportError:
     HAS_REQUESTS = False
 
 
-__version__ = '2.0.0'
+__version__ = '2.1.0'
 DEFAULT_CONFIG = '/etc/patchman/patchman-client.conf'
+DEFAULT_CERT_PATH = '/etc/patchman/client.crt'
+DEFAULT_KEY_PATH = '/etc/patchman/client.key'
 LOCK_DIR = '/run/lock/patchman'
 LOCK_FILE = os.path.join(LOCK_DIR, 'patchman.lock')
+
+# Try to import cryptography for certificate operations
+try:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    HAS_CRYPTOGRAPHY = True
+except ImportError:
+    HAS_CRYPTOGRAPHY = False
 
 
 class PatchmanClient:
@@ -63,6 +75,9 @@ class PatchmanClient:
         timeout: int = 300,
         protocol: int = 2,
         dry_run: bool = False,
+        client_cert: str = '',
+        client_key: str = '',
+        cert_renew_threshold: int = 30,
     ):
         self.server = server.rstrip('/') if server else ''
         self.api_key = api_key
@@ -76,6 +91,9 @@ class PatchmanClient:
         self.timeout = timeout
         self.protocol = protocol
         self.dry_run = dry_run
+        self.client_cert = client_cert
+        self.client_key = client_key or client_cert
+        self.cert_renew_threshold = cert_renew_threshold
 
         # System info (populated by collect methods)
         self.kernel = ''
@@ -1134,7 +1152,7 @@ class PatchmanClient:
 
     def build_report(self) -> dict[str, Any]:
         """Build the JSON report payload."""
-        return {
+        report = {
             'protocol': self.protocol,
             'hostname': self.hostname,
             'arch': self.arch,
@@ -1148,6 +1166,28 @@ class PatchmanClient:
             'sec_updates': self.sec_updates,
             'bug_updates': self.bug_updates,
         }
+
+        # Include compliance data if available
+        compliance = self._load_compliance_data()
+        if compliance is not None:
+            report['compliance'] = compliance
+
+        return report
+
+    def _load_compliance_data(self):
+        """Load compliance JSON from disk if it exists."""
+        compliance_file = '/var/lib/patchman/compliance/latest.json'
+        if not os.path.isfile(compliance_file):
+            return None
+        try:
+            with open(compliance_file) as f:
+                data = json.load(f)
+            self.log(f'Loaded compliance data from {compliance_file}')
+            return data
+        except (json.JSONDecodeError, OSError) as e:
+            self.log(f'Warning: could not load compliance data: {e}',
+                     level='error')
+            return None
 
     def submit_report(self) -> bool:
         """Submit the report to the Patchman server."""
@@ -1170,6 +1210,15 @@ class PatchmanClient:
         if self.api_key:
             headers['Authorization'] = f'Api-Key {self.api_key}'
 
+        # Prepare client certificate if configured
+        cert = None
+        if self.client_cert and os.path.exists(self.client_cert):
+            if self.client_key and self.client_key != self.client_cert:
+                cert = (self.client_cert, self.client_key)
+            else:
+                cert = self.client_cert
+            self.log(f'Using client certificate: {self.client_cert}', level='debug')
+
         try:
             if HAS_REQUESTS:
                 response = requests.post(
@@ -1178,6 +1227,7 @@ class PatchmanClient:
                     headers=headers,
                     verify=self.verify_ssl,
                     timeout=self.timeout,
+                    cert=cert,
                 )
                 status_code = response.status_code
                 response_text = response.text
@@ -1190,6 +1240,11 @@ class PatchmanClient:
                 if not self.verify_ssl:
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
+                if cert:
+                    if isinstance(cert, tuple):
+                        ctx.load_cert_chain(cert[0], cert[1])
+                    else:
+                        ctx.load_cert_chain(cert)
 
                 try:
                     with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as resp:
@@ -1213,6 +1268,215 @@ class PatchmanClient:
 
         except Exception as e:
             self.log(f'Error submitting report: {e}', level='error')
+            return False
+
+    # -------------------------------------------------------------------------
+    # Certificate Management
+    # -------------------------------------------------------------------------
+
+    def _build_cert_tuple(self) -> 'str | tuple[str, str] | None':
+        """Build cert parameter for requests/urllib from configured paths."""
+        if not self.client_cert or not os.path.exists(self.client_cert):
+            return None
+        if self.client_key and self.client_key != self.client_cert:
+            return (self.client_cert, self.client_key)
+        return self.client_cert
+
+    def _post_json(self, url: str, payload: dict, cert: 'str | tuple[str, str] | None' = None) -> tuple[int, str]:
+        """POST JSON to a URL, returning (status_code, response_text)."""
+        headers = {'Content-Type': 'application/json'}
+
+        if HAS_REQUESTS:
+            response = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                cert=cert,
+                verify=self.verify_ssl,
+                timeout=self.timeout,
+            )
+            return response.status_code, response.text
+        else:
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(url, data=data, headers=headers)
+            ctx = ssl.create_default_context()
+            if not self.verify_ssl:
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            if cert:
+                if isinstance(cert, tuple):
+                    ctx.load_cert_chain(cert[0], cert[1])
+                else:
+                    ctx.load_cert_chain(cert)
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as resp:
+                    return resp.status, resp.read().decode('utf-8')
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode('utf-8')
+
+    def check_cert_expiry(self) -> tuple[bool, int]:
+        """Check if client certificate needs renewal.
+
+        Returns:
+            Tuple of (needs_renewal, days_until_expiry)
+        """
+        if not self.client_cert or not os.path.exists(self.client_cert):
+            return False, -1
+
+        if not HAS_CRYPTOGRAPHY:
+            self.log('cryptography library not available, skipping cert check', level='debug')
+            return False, -1
+
+        try:
+            with open(self.client_cert, 'rb') as f:
+                cert_data = f.read()
+            cert = x509.load_pem_x509_certificate(cert_data)
+
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            expires = (
+                cert.not_valid_after_utc
+                if hasattr(cert, 'not_valid_after_utc')
+                else cert.not_valid_after.replace(tzinfo=timezone.utc)
+            )
+            days_until_expiry = (expires - now).days
+
+            self.log(f'Certificate expires in {days_until_expiry} days')
+
+            if days_until_expiry <= self.cert_renew_threshold:
+                return True, days_until_expiry
+
+            return False, days_until_expiry
+
+        except Exception as e:
+            self.log(f'Error checking certificate expiry: {e}', level='error')
+            return False, -1
+
+    def renew_certificate(self) -> bool:
+        """Renew the client certificate using the existing cert for authentication."""
+        if not HAS_CRYPTOGRAPHY:
+            self.log('cryptography library required for certificate renewal', level='error')
+            return False
+
+        if not self.client_cert:
+            self.log('No client certificate configured', level='error')
+            return False
+
+        self.log('Renewing client certificate...')
+
+        try:
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+            csr = x509.CertificateSigningRequestBuilder().subject_name(
+                x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, self.hostname)])
+            ).sign(key, hashes.SHA256())
+
+            csr_pem = csr.public_bytes(serialization.Encoding.PEM).decode()
+
+            url = f'{self.server}/api/cert/renew/'
+            cert = self._build_cert_tuple()
+
+            status_code, response_text = self._post_json(
+                url, {'csr': csr_pem}, cert=cert,
+            )
+
+            if status_code != 200:
+                self.log(f'Certificate renewal failed: {response_text}', level='error')
+                return False
+
+            result = json.loads(response_text)
+
+            with open(self.client_cert, 'w') as f:
+                f.write(result['certificate'])
+            os.chmod(self.client_cert, 0o644)
+
+            key_path = self.client_key or self.client_cert
+            key_pem = key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+
+            if key_path == self.client_cert:
+                with open(key_path, 'a') as f:
+                    f.write(key_pem.decode())
+            else:
+                with open(key_path, 'wb') as f:
+                    f.write(key_pem)
+                os.chmod(key_path, 0o600)
+
+            self.log(f'Certificate renewed, expires in {result["expires_in_days"]} days')
+            return True
+
+        except Exception as e:
+            self.log(f'Certificate renewal error: {e}', level='error')
+            return False
+
+    def enroll(self, token: str, cert_path: str = '', key_path: str = '') -> bool:
+        """Enroll for a new client certificate using an enrollment token.
+
+        Args:
+            token: Enrollment token from server
+            cert_path: Where to save the certificate
+            key_path: Where to save the key
+        """
+        if not HAS_CRYPTOGRAPHY:
+            self.log('Enrollment requires cryptography library', level='error')
+            return False
+
+        cert_path = cert_path or DEFAULT_CERT_PATH
+        key_path = key_path or DEFAULT_KEY_PATH
+
+        self.log(f'Enrolling {self.hostname} for client certificate...')
+
+        try:
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+            csr = x509.CertificateSigningRequestBuilder().subject_name(
+                x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, self.hostname)])
+            ).sign(key, hashes.SHA256())
+
+            csr_pem = csr.public_bytes(serialization.Encoding.PEM).decode()
+
+            url = f'{self.server}/api/cert/enroll/'
+            payload = {
+                'token': token,
+                'csr': csr_pem,
+                'hostname': self.hostname,
+            }
+
+            status_code, response_text = self._post_json(url, payload)
+
+            if status_code != 200:
+                self.log(f'Enrollment failed: {response_text}', level='error')
+                return False
+
+            result = json.loads(response_text)
+
+            cert_dir = os.path.dirname(cert_path)
+            if cert_dir and not os.path.exists(cert_dir):
+                os.makedirs(cert_dir, mode=0o755)
+
+            with open(cert_path, 'w') as f:
+                f.write(result['certificate'])
+            os.chmod(cert_path, 0o644)
+
+            with open(key_path, 'wb') as f:
+                f.write(key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                ))
+            os.chmod(key_path, 0o600)
+
+            self.log('Enrolled successfully!')
+            self.log(f'  Certificate: {cert_path}')
+            self.log(f'  Key: {key_path}')
+            self.log(f'  Expires in: {result["expires_in_days"]} days')
+            return True
+
+        except Exception as e:
+            self.log(f'Enrollment error: {e}', level='error')
             return False
 
     # -------------------------------------------------------------------------
@@ -1269,6 +1533,20 @@ class PatchmanClient:
         self.log(f'Patchman Python Client v{__version__}')
         self.log(f'Hostname: {self.hostname}')
 
+        # Check certificate status if configured
+        if self.client_cert:
+            if not os.path.exists(self.client_cert):
+                self.log(f'Client certificate not found: {self.client_cert}', level='error')
+                self.log('Use --enroll to obtain a certificate first', level='error')
+                return False
+
+            needs_renewal, days_left = self.check_cert_expiry()
+            if needs_renewal:
+                self.log(f'Certificate expires in {days_left} days, renewing...')
+                if not self.renew_certificate():
+                    self.log('Certificate renewal failed, aborting', level='error')
+                    return False
+
         # Collect system information
         self.collect_host_data()
         self.check_reboot_required()
@@ -1307,12 +1585,15 @@ def load_config(config_file: str) -> dict[str, Any]:
         'repo_check': True,
         'verify_ssl': True,
         'timeout': 300,
+        'client_cert': '',
+        'client_key': '',
+        'cert_renew_threshold': 30,
     }
 
     if not os.path.exists(config_file):
         return config
 
-    _load_config_file(config, config_file)
+    load_config_file(config, config_file)
 
     # Load conf.d drop-in files (like bash client)
     conf_dir = os.path.join(os.path.dirname(config_file), 'conf.d')
@@ -1320,12 +1601,12 @@ def load_config(config_file: str) -> dict[str, Any]:
         for f in sorted(os.listdir(conf_dir)):
             path = os.path.join(conf_dir, f)
             if os.path.isfile(path):
-                _load_config_file(config, path)
+                load_config_file(config, path)
 
     return config
 
 
-def _load_config_file(config: dict[str, Any], path: str) -> None:
+def load_config_file(config: dict[str, Any], path: str) -> None:
     """Parse a single shell-style config file into config dict."""
     try:
         with open(path) as f:
@@ -1357,6 +1638,15 @@ def _load_config_file(config: dict[str, Any], path: str) -> None:
                     elif key == 'timeout':
                         try:
                             config['timeout'] = int(value)
+                        except ValueError:
+                            pass
+                    elif key == 'client_cert':
+                        config['client_cert'] = value
+                    elif key == 'client_key':
+                        config['client_key'] = value
+                    elif key == 'cert_renew_threshold':
+                        try:
+                            config['cert_renew_threshold'] = int(value)
                         except ValueError:
                             pass
     except OSError:
@@ -1394,6 +1684,18 @@ def main() -> int:
                         default=2, help='Protocol version (default: 2)')
     parser.add_argument('--no-verify-ssl', action='store_true',
                         help='Disable SSL certificate verification')
+    parser.add_argument('--client-cert', metavar='FILE',
+                        help='Client certificate file for mTLS')
+    parser.add_argument('--client-key', metavar='FILE',
+                        help='Client key file (if separate from cert)')
+    parser.add_argument('--enroll', action='store_true',
+                        help='Enroll for a new client certificate')
+    parser.add_argument('--token', metavar='TOKEN',
+                        help='Enrollment token (required with --enroll)')
+    parser.add_argument('--no-renew', action='store_true',
+                        help='Skip automatic certificate renewal')
+    parser.add_argument('--regenerate-compliance', action='store_true',
+                        help='Run patchman-openscap before submitting report')
     parser.add_argument('--version', action='version',
                         version=f'patchman-client.py {__version__}')
 
@@ -1412,6 +1714,9 @@ def main() -> int:
     repo_check = not args.no_repo_check and config['repo_check']
     verify_ssl = not args.no_verify_ssl and config['verify_ssl']
     timeout = config['timeout']
+    client_cert = args.client_cert or config['client_cert']
+    client_key = args.client_key or config['client_key']
+    cert_renew_threshold = config['cert_renew_threshold']
 
     # Validate protocol
     supported_protocols = [2]
@@ -1470,7 +1775,41 @@ def main() -> int:
         timeout=timeout,
         protocol=args.protocol,
         dry_run=args.dry_run,
+        client_cert=client_cert,
+        client_key=client_key,
+        cert_renew_threshold=cert_renew_threshold if not args.no_renew else 0,
     )
+
+    # Handle enrollment
+    if args.enroll:
+        if not args.token:
+            print('Error: --token is required with --enroll', file=sys.stderr)
+            return 1
+        success = client.enroll(
+            token=args.token,
+            cert_path=client_cert or DEFAULT_CERT_PATH,
+            key_path=client_key or DEFAULT_KEY_PATH,
+        )
+        return 0 if success else 1
+
+    # Regenerate compliance data if requested
+    if args.regenerate_compliance:
+        client.log('Running patchman-openscap to regenerate compliance data...')
+        try:
+            result = subprocess.run(
+                ['patchman-openscap', '--force'],
+                capture_output=True, text=True, timeout=3600,
+            )
+            if result.returncode != 0:
+                client.log(f'Warning: patchman-openscap failed (exit {result.returncode})',
+                           level='error')
+                if result.stderr:
+                    client.log(result.stderr.strip(), level='error')
+        except FileNotFoundError:
+            client.log('Warning: patchman-openscap not found, skipping compliance scan',
+                       level='error')
+        except subprocess.TimeoutExpired:
+            client.log('Warning: patchman-openscap timed out', level='error')
 
     # Normal operation: collect and submit report
     success = client.run()

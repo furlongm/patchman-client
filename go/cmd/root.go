@@ -37,9 +37,12 @@ func init() {
 	rootCmd.PersistentFlags().StringP("api-key", "k", "", "API key for authentication")
 	rootCmd.PersistentFlags().Bool("no-verify-ssl", false, "disable SSL certificate verification")
 	rootCmd.PersistentFlags().String("ca-file", "", "path to custom CA certificate file")
+	rootCmd.PersistentFlags().String("client-cert", "", "client certificate file for mTLS")
+	rootCmd.PersistentFlags().String("client-key", "", "client key file (if separate from cert)")
 	rootCmd.PersistentFlags().StringP("tags", "t", "", "tags to assign to this host")
 	rootCmd.PersistentFlags().BoolP("local-updates", "u", false, "find updates locally (e.g. for RHEL)")
 	rootCmd.PersistentFlags().BoolP("no-repo-check", "n", false, "skip repository collection")
+	rootCmd.PersistentFlags().Bool("regenerate-compliance", false, "run patchman-openscap before submitting")
 
 	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
@@ -47,9 +50,12 @@ func init() {
 	viper.BindPFlag("api_key", rootCmd.PersistentFlags().Lookup("api-key"))
 	viper.BindPFlag("no_verify_ssl", rootCmd.PersistentFlags().Lookup("no-verify-ssl"))
 	viper.BindPFlag("ca_file", rootCmd.PersistentFlags().Lookup("ca-file"))
+	viper.BindPFlag("client_cert", rootCmd.PersistentFlags().Lookup("client-cert"))
+	viper.BindPFlag("client_key", rootCmd.PersistentFlags().Lookup("client-key"))
 	viper.BindPFlag("tags", rootCmd.PersistentFlags().Lookup("tags"))
 	viper.BindPFlag("local_updates", rootCmd.PersistentFlags().Lookup("local-updates"))
 	viper.BindPFlag("no_repo_check", rootCmd.PersistentFlags().Lookup("no-repo-check"))
+	viper.BindPFlag("regenerate_compliance", rootCmd.PersistentFlags().Lookup("regenerate-compliance"))
 
 	rootCmd.AddCommand(collectCmd)
 	rootCmd.AddCommand(submitCmd)
@@ -151,6 +157,10 @@ func loadShellConfig(path string) {
 		case "repo_check":
 			// repo_check=false in config → no_repo_check=true
 			viper.SetDefault("no_repo_check", !parseBool(value))
+		case "client_cert":
+			viper.SetDefault("client_cert", value)
+		case "client_key":
+			viper.SetDefault("client_key", value)
 		}
 	}
 }

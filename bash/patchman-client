@@ -15,15 +15,17 @@ dry_run=false
 repo_check=true
 tags=''
 api_key=''
+regenerate_compliance=false
 
 usage() {
-    echo "${0} [-v] [-d] [-n] [-u] [-y] [-r] [-s SERVER] [-c FILE] [-t TAGS] [-H HOSTNAME] [-p PROTOCOL] [-k API_KEY]"
+    echo "${0} [-v] [-d] [-n] [-u] [-y] [-r] [-R] [-s SERVER] [-c FILE] [-t TAGS] [-H HOSTNAME] [-p PROTOCOL] [-k API_KEY]"
     echo "-v: verbose output (default is silent)"
     echo "-d: debug output"
     echo "-n: no repo check (required when used as an apt or yum plugin)"
     echo "-u: find updates locally (e.g. for RHEL)"
     echo "-y: dry run (collect data but do not submit)"
     echo "-r: request a report from the server (default is no report)"
+    echo "-R: regenerate compliance data before submitting"
     echo "-s SERVER: web server address, e.g. https://patchman.example.com"
     echo "-c FILE: config file location (default is /etc/patchman/patchman-client.conf)"
     echo "-t TAGS: comma-separated list of tags, e.g. -t www,dev"
@@ -36,7 +38,7 @@ usage() {
 }
 
 parseopts() {
-    while getopts "vdnuyrs:c:t:h:H:p:k:" opt; do
+    while getopts "vdnuyrs:c:t:h:H:p:k:R" opt; do
         case ${opt} in
         v)
             verbose=true
@@ -56,6 +58,9 @@ parseopts() {
             ;;
         r)
             cli_report=true
+            ;;
+        R)
+            regenerate_compliance=true
             ;;
         s)
             cli_server=${OPTARG}
@@ -955,6 +960,16 @@ build_json_report() {
         reboot_bool="true"
     fi
 
+    # Load compliance data if available
+    local compliance_file="/var/lib/patchman/compliance/latest.json"
+    local compliance_args=""
+    local compliance_field=""
+    if [ -f "${compliance_file}" ]; then
+        compliance_args="--slurpfile compliance ${compliance_file}"
+        compliance_field=', compliance: $compliance[0]'
+    fi
+
+    # shellcheck disable=SC2086
     jq -n \
         --argjson protocol 2 \
         --arg hostname "${hostname}" \
@@ -968,20 +983,21 @@ build_json_report() {
         --slurpfile modules "${tmpfile_modules_json}" \
         --slurpfile sec_updates "${tmpfile_sec_json}" \
         --slurpfile bug_updates "${tmpfile_bug_json}" \
-        '{
-            protocol: $protocol,
-            hostname: $hostname,
-            arch: $arch,
-            kernel: $kernel,
-            os: $os,
-            tags: $tags,
-            reboot_required: $reboot_required,
-            packages: $packages[0],
-            repos: $repos[0],
-            modules: $modules[0],
-            sec_updates: $sec_updates[0],
-            bug_updates: $bug_updates[0]
-        }'
+        ${compliance_args} \
+        "{
+            protocol: \$protocol,
+            hostname: \$hostname,
+            arch: \$arch,
+            kernel: \$kernel,
+            os: \$os,
+            tags: \$tags,
+            reboot_required: \$reboot_required,
+            packages: \$packages[0],
+            repos: \$repos[0],
+            modules: \$modules[0],
+            sec_updates: \$sec_updates[0],
+            bug_updates: \$bug_updates[0]${compliance_field}
+        }"
 }
 
 post_json_data() {
@@ -1203,6 +1219,16 @@ if ${dry_run} ; then
     fi
     cleanup
     exit 0
+fi
+
+# Regenerate compliance data if requested
+if ${regenerate_compliance} ; then
+    if command -v patchman-openscap > /dev/null 2>&1 ; then
+        ${verbose} && echo "Running patchman-openscap to regenerate compliance data..."
+        patchman-openscap --force || ${verbose} && echo "Warning: patchman-openscap failed"
+    else
+        ${verbose} && echo "Warning: patchman-openscap not found, skipping compliance scan"
+    fi
 fi
 
 # Use protocol 2 (JSON) or protocol 1 (form data) based on config
