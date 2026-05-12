@@ -23,8 +23,8 @@ override_dh_auto_install:
 	
 	# Install hooks and systemd files in meta-package
 	install -D -m 644 hooks/apt/05patchman debian/patchman-client/etc/apt/apt.conf.d/05patchman
-	install -D -m 644 contrib/systemd/patchman-client.service debian/patchman-client/lib/systemd/system/patchman-client.service
-	install -D -m 644 contrib/systemd/patchman-client.timer debian/patchman-client/lib/systemd/system/patchman-client.timer
+	install -D -m 644 etc/systemd/patchman-client.service debian/patchman-client/lib/systemd/system/patchman-client.service
+	install -D -m 644 etc/systemd/patchman-client.timer debian/patchman-client/lib/systemd/system/patchman-client.timer
 
 override_dh_auto_test:
 	# Skip tests during package build

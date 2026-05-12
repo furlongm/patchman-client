@@ -73,8 +73,8 @@ install -D -m 644 hooks/yum/patchman.conf %{buildroot}%{_sysconfdir}/yum/pluginc
 install -D -m 644 hooks/yum/patchman.py %{buildroot}%{_prefix}/lib/yum-plugins/patchman.py
 
 # Systemd files (in base package)
-install -D -m 644 contrib/systemd/patchman-client.service %{buildroot}%{_unitdir}/patchman-client.service
-install -D -m 644 contrib/systemd/patchman-client.timer %{buildroot}%{_unitdir}/patchman-client.timer
+install -D -m 644 etc/systemd/patchman-client.service %{buildroot}%{_unitdir}/patchman-client.service
+install -D -m 644 etc/systemd/patchman-client.timer %{buildroot}%{_unitdir}/patchman-client.timer
 
 %post bash
 alternatives --install %{_sbindir}/patchman-client patchman-client %{_sbindir}/patchman-client-bash 30
