@@ -1100,8 +1100,7 @@ if ! check_command_exists awk || \
     exit 1
 fi
 
-os_lock_dir=/var/lock
-lock_dir=$(dirname "$(readlink -f ${os_lock_dir})")/patchman
+lock_dir=/run/patchman
 mkdir -p "${lock_dir}"
 if [ ! -d "${lock_dir}" ] ; then
     echo "Lock directory does not exist, exiting: ${lock_dir}"

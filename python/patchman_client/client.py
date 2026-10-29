@@ -42,7 +42,7 @@ except ImportError:
 
 __version__ = '2.0.0'
 DEFAULT_CONFIG = '/etc/patchman/patchman-client.conf'
-LOCK_DIR = '/run/lock/patchman'
+LOCK_DIR = '/run/patchman'
 LOCK_FILE = os.path.join(LOCK_DIR, 'patchman.lock')
 
 
