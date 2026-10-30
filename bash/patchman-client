@@ -89,7 +89,7 @@ cleanup() {
         echo "Debug: not deleting ${tmpfile_sec} (security updates)"
         echo "Debug: not deleting ${tmpfile_bug} (updates)"
         echo "Debug: not deleting ${tmpfile_mod} (modules)"
-        if [ ! -z "${tmpfile_packages_json}" ] ; then
+        if [ -n "${tmpfile_packages_json}" ] ; then
             echo "Debug: not deleting ${tmpfile_packages_json} (packages json)"
             echo "Debug: not deleting ${tmpfile_repos_json} (repos json)"
             echo "Debug: not deleting ${tmpfile_modules_json} (modules json)"
@@ -122,7 +122,7 @@ cleanup() {
 }
 
 check_conf() {
-    if [ ! -z "${cli_conf}" ] ; then
+    if [ -n "${cli_conf}" ] ; then
         conf=${cli_conf}
     fi
 
@@ -148,7 +148,7 @@ check_conf() {
             echo "  Edit ${conf} and set server= to your patchman server URL." >&2
             exit 1
         fi
-        if [ ! -z "${cli_server}" ] ; then
+        if [ -n "${cli_server}" ] ; then
             server=${cli_server}
         fi
         if echo "${server}" | grep -qE 'patchman\.example\.com' ; then
@@ -157,31 +157,31 @@ check_conf() {
             exit 1
         fi
     else
-        if [ ! -z "${cli_server}" ] ; then
+        if [ -n "${cli_server}" ] ; then
             server=${cli_server}
         fi
     fi
 
-    if [ ! -z "${cli_report}" ] ; then
+    if [ -n "${cli_report}" ] ; then
         report=${cli_report}
     fi
 
-    if [ ! -z "${cli_tags}" ] ; then
+    if [ -n "${cli_tags}" ] ; then
         tags="${cli_tags}"
     fi
 
-    if [ ! -z "${cli_protocol}" ] ; then
+    if [ -n "${cli_protocol}" ] ; then
         protocol=${cli_protocol}
     fi
 
-    if [ ! -z "${cli_api_key}" ] ; then
+    if [ -n "${cli_api_key}" ] ; then
         api_key=${cli_api_key}
     fi
 
     if [ -z "${hostname}" ] && [ -z "${cli_hostname}" ] ; then
         get_hostname
     else
-        if [ ! -z "${cli_hostname}" ] ; then
+        if [ -n "${cli_hostname}" ] ; then
             hostname=${cli_hostname}
         fi
     fi
@@ -205,7 +205,7 @@ check_conf() {
         echo "Hostname: ${hostname}"
         echo "Tags: ${tags}"
         echo "Protocol: ${protocol}"
-        if [ ! -z "${api_key}" ] ; then
+        if [ -n "${api_key}" ] ; then
             echo "API Key: ${api_key:0:12}..."
         fi
         for var in report local_updates repo_check dry_run verbose debug ; do
@@ -258,7 +258,7 @@ parse_module() {
         module_package_str="${module_package_str} '${package}'"
     done
     IFS=${FULL_IFS}
-    if [ ! -z ${CPE_NAME} ] ; then
+    if [ -n "${CPE_NAME}" ] ; then
         module_repo="${CPE_NAME}-${module_repo}"
     fi
     echo "'${module}' '${module_stream}' '${module_version}' '${module_context}' '${module_arch}' '${module_repo}'${module_package_str}" >> ${tmpfile_mod}
@@ -383,7 +383,7 @@ get_hostname() {
             short_hostname=$(cat /etc/hostname)
         fi
         domainname=$(dnsdomainname)
-        if [ ! -z "${domainname}" ] ; then
+        if [ -n "${domainname}" ] ; then
             hostname=${short_hostname}.${domainname}
         else
             hostname=${short_hostname}
@@ -398,7 +398,7 @@ get_host_data() {
     if [ -f /etc/os-release ] ; then
         . /etc/os-release
         if [ "${ID}" == "debian" ] ; then
-            os="Debian $(cat /etc/debian_version | sed -e 's/\//-/')"
+            os="Debian $(sed -e 's/\//-/' /etc/debian_version)"
         elif [ "${ID}" == "raspbian" ] ; then
             os="Raspbian $(cat /etc/debian_version)"
         elif [ "${ID}" == "ubuntu" ] ; then
@@ -453,7 +453,7 @@ get_host_data() {
             fi
         done
     fi
-    if [ ! -z "${CPE_NAME}" ] ; then
+    if [ -n "${CPE_NAME}" ] ; then
         os="${os} [${CPE_NAME}]"
     fi
     if ${verbose} ; then
@@ -495,7 +495,7 @@ get_yum_updates() {
     | grep -v 'Failed to set locale' \
     >> "${tmpfile_bug}"
     sed -i '/^$/d' "${tmpfile_bug}"
-    if [ ! -z ${CPE_NAME} ] ; then
+    if [ -n "${CPE_NAME}" ] ; then
         sed -i -e "s#${1}#${CPE_NAME}-${1}#g" "${tmpfile_sec}"
         sed -i -e "s#${1}#${CPE_NAME}-${1}#g" "${tmpfile_bug}"
     fi
@@ -565,7 +565,7 @@ get_repos() {
                 fi
                 get_yum_updates ${id}
             fi
-            if [ ! -z ${CPE_NAME} ] ; then
+            if [ -n "${CPE_NAME}" ] ; then
                 id="${CPE_NAME}-${id}"
             fi
             j=$(echo ${i} | sed -e "s#'${full_id}' '${orig_name}'#'${name}' '${id}' '${priority}'#" | sed -e "s/'\[/'/g" -e "s/\]'/'/g")
@@ -945,7 +945,7 @@ build_json_report() {
 
     # Convert tags to JSON array
     local tags_json="[]"
-    if [ ! -z "${tags}" ] && [ "${tags}" != "Default" ] ; then
+    if [ -n "${tags}" ] && [ "${tags}" != "Default" ] ; then
         tags_json=$(echo "${tags}" | tr ',' '\n' | jq -R . | jq -s .)
     fi
 
@@ -1012,7 +1012,7 @@ post_json_data() {
     fi
 
     curl_opts="${curl_opts} -H 'Content-Type: application/json'"
-    if [ ! -z "${api_key}" ] ; then
+    if [ -n "${api_key}" ] ; then
         curl_opts="${curl_opts} -H 'Authorization: Api-Key ${api_key}'"
     fi
     curl_opts="${curl_opts} -d @${tmpfile_report_json}"
@@ -1032,7 +1032,7 @@ post_json_data() {
     fi
 
     if ${report} || ${verbose} ; then
-        if [ ! -z "${result}" ] ; then
+        if [ -n "${result}" ] ; then
             echo "${result}" | jq . 2>/dev/null || echo "${result}"
         else
             echo "No output returned."
@@ -1084,7 +1084,7 @@ post_data() {
     fi
 
     if ${report} || ${verbose} ; then
-        if [ ! -z "${result}" ] ; then
+        if [ -n "${result}" ] ; then
             echo "${result}"
         else
             echo "No output returned."
@@ -1150,7 +1150,7 @@ if ${dry_run} ; then
     echo "Security updates: $(wc -l < ${tmpfile_sec})"
     echo "Bugfix updates: $(wc -l < ${tmpfile_bug})"
     echo "Reboot required: ${reboot}"
-    if [ ! -z "${tags}" ] ; then
+    if [ -n "${tags}" ] ; then
         echo "Tags: ${tags}"
     fi
     if ${verbose} ; then

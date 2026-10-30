@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "patchman-client"
 dynamic = ["version"]
 description = "Patchman client for reporting system packages and updates"
-readme = {file = "../README.md", content-type = "text/markdown"}
+readme = {file = "README.md", content-type = "text/markdown"}
 license = "GPL-3.0-or-later"
 authors = [
     {name = "Marcus Furlong", email = "furlongm@gmail.com"}
