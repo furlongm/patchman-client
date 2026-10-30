@@ -86,7 +86,7 @@ The server URL and API key can be provided via:
 		}
 
 		// Acquire exclusive lock to prevent concurrent runs
-		lockDir := "/run/lock/patchman"
+		lockDir := "/run/patchman"
 		os.MkdirAll(lockDir, 0o755)
 		lockPath := filepath.Join(lockDir, "patchman.lock")
 		lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_WRONLY, 0o644)
