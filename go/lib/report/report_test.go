@@ -52,6 +52,22 @@ func TestSetTags(t *testing.T) {
 	}
 }
 
+func TestSetTagsDelimiters(t *testing.T) {
+	cases := map[string][]string{
+		"web prod":   {"web", "prod"},
+		"web, prod":  {"web", "prod"},
+		"web,,prod,": {"web", "prod"},
+		"  ":         nil,
+	}
+	for in, want := range cases {
+		rpt := NewReport(si.OSInfo{Hostname: "test"})
+		rpt.SetTags(in)
+		if strings.Join(rpt.Tags, "|") != strings.Join(want, "|") {
+			t.Errorf("SetTags(%q) = %q, want %q", in, rpt.Tags, want)
+		}
+	}
+}
+
 func TestAddRPMs(t *testing.T) {
 	osInfo := si.OSInfo{Hostname: "test"}
 	rpt := NewReport(osInfo)

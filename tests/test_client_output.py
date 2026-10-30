@@ -1654,6 +1654,26 @@ class PythonConfigTests(unittest.TestCase):
         finally:
             os.unlink(conf_path)
 
+    def test_tags_comma_or_space_delimited(self):
+        """Tags split on commas if present, otherwise on whitespace."""
+        import importlib
+        spec = importlib.util.spec_from_file_location(
+            'client', os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                'python', 'patchman_client', 'client.py',
+            ),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        for tags, expected in (
+            ('web prod', ['web', 'prod']),
+            ('web, prod', ['web', 'prod']),
+            ('my tag,web', ['my tag', 'web']),
+            ('', []),
+        ):
+            client = mod.PatchmanClient(hostname='test', tags=tags)
+            self.assertEqual(client.tags, expected)
+
 
 if __name__ == '__main__':
     unittest.main()
