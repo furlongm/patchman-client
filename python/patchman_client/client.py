@@ -67,7 +67,8 @@ class PatchmanClient:
         self.server = server.rstrip('/') if server else ''
         self.api_key = api_key
         self.hostname = hostname or self._get_hostname()
-        self.tags = [t.strip() for t in tags.split(',') if t.strip()] if tags else []
+        sep = ',' if ',' in tags else None
+        self.tags = [t.strip() for t in tags.split(sep) if t.strip()] if tags else []
         self.verbose = verbose
         self.debug = debug
         self.local_updates = local_updates

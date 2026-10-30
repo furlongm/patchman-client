@@ -23,7 +23,7 @@ Description: Patchman client - meta-package with hooks
 
 Package: patchman-client-bash
 Architecture: all
-Depends: ${misc:Depends}, bash, curl, coreutils, gawk, grep, sed
+Depends: ${misc:Depends}, bash, curl, coreutils, gawk, grep, sed, jq
 Recommends: jq
 Provides: patchman-client-impl
 Description: Patchman client - bash implementation

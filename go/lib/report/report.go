@@ -104,14 +104,16 @@ func NewReport(osInfo si.OSInfo) *Report {
 	}
 }
 
-// SetTags sets the tags from a comma-separated string
+// SetTags sets the tags from a comma or space delimited string
 func (r *Report) SetTags(tags string) {
-	if tags == "" {
-		return
+	parts := strings.Fields(tags)
+	if strings.Contains(tags, ",") {
+		parts = strings.Split(tags, ",")
 	}
-	r.Tags = strings.Split(tags, ",")
-	for i, tag := range r.Tags {
-		r.Tags[i] = strings.TrimSpace(tag)
+	for _, tag := range parts {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			r.Tags = append(r.Tags, tag)
+		}
 	}
 }
 

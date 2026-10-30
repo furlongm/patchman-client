@@ -19,7 +19,7 @@ the client implementations (bash, python, or go).
 
 %package bash
 Summary:        Patchman client - bash implementation
-Requires:       bash curl coreutils gawk grep sed
+Requires:       bash curl coreutils gawk grep sed jq
 Recommends:     jq
 Provides:       patchman-client-impl
 
