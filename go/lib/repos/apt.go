@@ -37,15 +37,18 @@ func PrintAptReposTable(repos []AptRepo) {
 }
 
 func ConstructAptRepoURL(url string, components []string) string {
-	repo_url := url
-	if components[0] != "" {
-		repo_url += "/dists/" + components[0]
+	repo_url := strings.TrimRight(url, "/")
+	if len(components) < 2 || components[1] == "Packages" {
+		// flat repo, e.g. "./ Packages"
+		if len(components) > 0 {
+			repo_url += "/" + components[0]
+		}
+		return repo_url
 	}
-	if components[1] != "Packages" {
-		repo_url += "/binary-" + components[1]
-	}
-	return repo_url
+	return repo_url + "/dists/" + components[0] + "/binary-" + components[1]
 }
+
+var aptRepoLineRe = regexp.MustCompile(`^\s*-?[0-9]+\s+(mirror\+file:|https?:)`)
 
 func GetAptRepos(os_info si.OSInfo) ([]AptRepo, error) {
 	cmd, err := util.RunCommand("apt-cache", "policy")
@@ -55,21 +58,27 @@ func GetAptRepos(os_info si.OSInfo) ([]AptRepo, error) {
 	if cmd == nil {
 		return nil, nil // apt-cache not available
 	}
+	return parseAptPolicy(string(cmd), os_info), nil
+}
 
+func parseAptPolicy(output string, os_info si.OSInfo) []AptRepo {
 	apt_repos := []AptRepo{}
-	repoLineRe := regexp.MustCompile(`^ *[0-9]{1,5} mirror\+file|http(s)?:`)
-	for _, line := range strings.Split(string(cmd), "\n") {
+	for _, line := range strings.Split(output, "\n") {
 		if strings.Contains(line, "Translation") {
 			continue
 		}
-		if !repoLineRe.MatchString(line) {
+		if !aptRepoLineRe.MatchString(line) {
 			continue
 		}
-		v := strings.Split(line, " ")
-		priority := v[1]
+		// priority is right-aligned, so the number of leading spaces varies
+		v := strings.Fields(line)
+		if len(v) < 4 {
+			continue
+		}
+		priority := v[0]
 		repo_urls := []string{}
-		if strings.HasPrefix(v[2], "mirror+file:/") {
-			mirror_file := strings.Replace(v[2], "mirror+file:", "", 1)
+		if strings.HasPrefix(v[1], "mirror+file:/") {
+			mirror_file := strings.Replace(v[1], "mirror+file:", "", 1)
 			content, err := os.ReadFile(mirror_file)
 			if err != nil {
 				slog.Warn("failed to read mirror file", "file", mirror_file, "error", err)
@@ -77,12 +86,15 @@ func GetAptRepos(os_info si.OSInfo) ([]AptRepo, error) {
 			}
 			for _, mirror := range strings.Split(string(content), "\n") {
 				if mirror != "" {
-					repo_url := ConstructAptRepoURL(mirror, v[3:])
+					repo_url := ConstructAptRepoURL(mirror, v[2:])
 					repo_urls = append(repo_urls, repo_url)
 				}
 			}
+			if len(repo_urls) == 0 {
+				continue
+			}
 		} else {
-			repo_url := ConstructAptRepoURL(v[2], v[3:])
+			repo_url := ConstructAptRepoURL(v[1], v[2:])
 			repo_urls = append(repo_urls, repo_url)
 		}
 		name := fmt.Sprintf("%s %s %s repo at %s", os_info.OSVendor, os_info.OSRelease, os_info.OSArch, repo_urls[0])
@@ -92,8 +104,7 @@ func GetAptRepos(os_info si.OSInfo) ([]AptRepo, error) {
 			Urls:     repo_urls,
 		})
 	}
-
-	return apt_repos, nil
+	return apt_repos
 }
 
 func PrintAptRepos(repos []AptRepo) {
