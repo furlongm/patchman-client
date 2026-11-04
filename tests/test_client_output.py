@@ -1376,6 +1376,73 @@ class MirrorFileResolutionTests(unittest.TestCase):
             os.unlink(mirror_path)
 
 
+class AptMirrorFileTrailingSlashTests(unittest.TestCase):
+    """Mirror file URLs with a trailing slash must not produce '//' in repo URLs,
+    and binary-<arch> must use the apt arch, not the machine arch."""
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(__import__('shutil').rmtree, self.tmpdir)
+        mirror_file = os.path.join(self.tmpdir, 'mirrors.txt')
+        with open(mirror_file, 'w') as f:
+            f.write('http://deb.debian.org/debian/\n')
+        self.policy = (
+            'Package files:\n'
+            f' 500 mirror+file:{mirror_file} bookworm/main amd64 Packages\n'
+            '     release v=12,o=Debian,a=stable,n=bookworm,c=main,b=amd64\n'
+        )
+        self.expected = 'http://deb.debian.org/debian/dists/bookworm/main/binary-amd64'
+
+    def test_python_client(self):
+        import sys
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'python',
+        ))
+        from patchman_client.client import PatchmanClient
+
+        client = PatchmanClient.__new__(PatchmanClient)
+        client.repos = []
+        client.arch = 'x86_64'
+        client.os_string = 'Debian 12'
+        client.log = lambda *a, **kw: None
+        client._command_exists = lambda cmd: True
+        client._run_command = lambda cmd: (0, self.policy, '')
+        client._collect_apt_repos()
+        self.assertEqual(client.repos[0]['urls'], [self.expected])
+
+    def test_bash_client(self):
+        import subprocess
+        bindir = os.path.join(self.tmpdir, 'bin')
+        os.mkdir(bindir)
+        apt_cache = os.path.join(bindir, 'apt-cache')
+        with open(apt_cache, 'w') as f:
+            f.write(f"#!/bin/sh\ncat <<'EOF'\n{self.policy}EOF\n")
+        os.chmod(apt_cache, 0o755)
+        conf = os.path.join(self.tmpdir, 'patchman-client.conf')
+        with open(conf, 'w') as f:
+            f.write('server=https://pm.test\napi_key=test\n')
+        src = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'bash', 'patchman-client',
+        )
+        # /run/patchman is not writable for unprivileged test runners
+        client = os.path.join(self.tmpdir, 'patchman-client')
+        with open(src) as f:
+            script = f.read()
+        self.assertIn('lock_dir=/run/patchman', script)
+        with open(client, 'w') as f:
+            f.write(script.replace('lock_dir=/run/patchman', f'lock_dir={self.tmpdir}/lock'))
+        env = dict(os.environ, PATH=f'{bindir}:{os.environ["PATH"]}')
+        result = subprocess.run(
+            ['bash', client, '-y', '-d', '-c', conf],
+            capture_output=True, text=True, timeout=60, env=env,
+        )
+        self.assertIn(f"'500' '{self.expected}'", result.stdout)
+        self.assertNotIn('debian//dists', result.stdout)
+
+
 class BashDebFieldBranchingTests(unittest.TestCase):
     """Tests for deb vs rpm field format in bash build_repos_json."""
 

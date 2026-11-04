@@ -2,8 +2,11 @@ package repos
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/furlongm/patchman-client/go/lib/si"
 )
 
 func TestGetYumRepos(t *testing.T) {
@@ -219,6 +222,80 @@ enabled=1
 	// baseurl should be preserved, not overwritten by metalink
 	if !strings.Contains(repos[0].BaseURL, "example.com") {
 		t.Errorf("BaseURL should be the baseurl value, got '%s'", repos[0].BaseURL)
+	}
+}
+
+func TestConstructAptRepoURL(t *testing.T) {
+	tests := []struct {
+		url        string
+		components []string
+		want       string
+	}{
+		{"http://deb.debian.org/debian", []string{"bookworm/main", "amd64", "Packages"},
+			"http://deb.debian.org/debian/dists/bookworm/main/binary-amd64"},
+		{"http://deb.debian.org/debian/", []string{"bookworm/main", "amd64", "Packages"},
+			"http://deb.debian.org/debian/dists/bookworm/main/binary-amd64"},
+		{"https://repo.example.com/flat", []string{"./", "Packages"},
+			"https://repo.example.com/flat/./"},
+	}
+	for _, tt := range tests {
+		if got := ConstructAptRepoURL(tt.url, tt.components); got != tt.want {
+			t.Errorf("ConstructAptRepoURL(%q, %q) = %q, want %q", tt.url, tt.components, got, tt.want)
+		}
+	}
+}
+
+func TestParseAptPolicy(t *testing.T) {
+	output := `Package files:
+ 100 /var/lib/dpkg/status
+     release a=now
+ 500 http://deb.debian.org/debian bookworm/main amd64 Packages
+     release v=12,o=Debian,a=stable,n=bookworm,l=Debian,c=main,b=amd64
+     origin deb.debian.org
+ 500 http://deb.debian.org/debian bookworm/main Translation-en
+   1 http://deb.debian.org/debian experimental/main amd64 Packages
+1001 http://apt.example.com/pinned stable/main amd64 Packages
+ -10 http://apt.example.com/never stable/main amd64 Packages
+ 500 https://repo.example.com/flat ./ Packages
+Pinned packages:
+`
+	want := []AptRepo{
+		{Priority: "500", Urls: []string{"http://deb.debian.org/debian/dists/bookworm/main/binary-amd64"}},
+		{Priority: "1", Urls: []string{"http://deb.debian.org/debian/dists/experimental/main/binary-amd64"}},
+		{Priority: "1001", Urls: []string{"http://apt.example.com/pinned/dists/stable/main/binary-amd64"}},
+		{Priority: "-10", Urls: []string{"http://apt.example.com/never/dists/stable/main/binary-amd64"}},
+		{Priority: "500", Urls: []string{"https://repo.example.com/flat/./"}},
+	}
+	got := parseAptPolicy(output, si.OSInfo{})
+	if len(got) != len(want) {
+		t.Fatalf("got %d repos, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i].Priority != want[i].Priority || !reflect.DeepEqual(got[i].Urls, want[i].Urls) {
+			t.Errorf("repo %d: got %s %q, want %s %q", i, got[i].Priority, got[i].Urls, want[i].Priority, want[i].Urls)
+		}
+	}
+}
+
+func TestParseAptPolicyMirrorFile(t *testing.T) {
+	dir := t.TempDir()
+	mirrors := dir + "/mirrors.txt"
+	if err := os.WriteFile(mirrors, []byte("http://a.example.com/debian/\nhttps://b.example.com/debian\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	empty := dir + "/empty.txt"
+	if err := os.WriteFile(empty, []byte("\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := " 500 mirror+file:" + mirrors + " bookworm/main amd64 Packages\n" +
+		" 500 mirror+file:" + empty + " bookworm/main amd64 Packages\n"
+	got := parseAptPolicy(output, si.OSInfo{})
+	want := []string{
+		"http://a.example.com/debian/dists/bookworm/main/binary-amd64",
+		"https://b.example.com/debian/dists/bookworm/main/binary-amd64",
+	}
+	if len(got) != 1 || !reflect.DeepEqual(got[0].Urls, want) {
+		t.Errorf("got %+v, want one repo with %q", got, want)
 	}
 }
 

@@ -669,11 +669,12 @@ class PatchmanClient:
                     pass
 
         # Build repo entries from resolved URLs
-        for priority, base_url, dist, component in http_entries:
-            if component.endswith('Packages'):
+        for priority, base_url, dist, apt_arch in http_entries:
+            base_url = base_url.rstrip('/')
+            if apt_arch.endswith('Packages'):
                 url = f'{base_url}/{dist}'
             else:
-                url = f'{base_url}/dists/{dist}/binary-{self.arch}'
+                url = f'{base_url}/dists/{dist}/binary-{apt_arch}'
 
             repo_name = f'{os_name} {version_id} {self.arch} repo at {url}'
 
