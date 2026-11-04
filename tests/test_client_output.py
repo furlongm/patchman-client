@@ -1423,10 +1423,17 @@ class AptMirrorFileTrailingSlashTests(unittest.TestCase):
         conf = os.path.join(self.tmpdir, 'patchman-client.conf')
         with open(conf, 'w') as f:
             f.write('server=https://pm.test\napi_key=test\n')
-        client = os.path.join(
+        src = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             'bash', 'patchman-client',
         )
+        # /run/patchman is not writable for unprivileged test runners
+        client = os.path.join(self.tmpdir, 'patchman-client')
+        with open(src) as f:
+            script = f.read()
+        self.assertIn('lock_dir=/run/patchman', script)
+        with open(client, 'w') as f:
+            f.write(script.replace('lock_dir=/run/patchman', f'lock_dir={self.tmpdir}/lock'))
         env = dict(os.environ, PATH=f'{bindir}:{os.environ["PATH"]}')
         result = subprocess.run(
             ['bash', client, '-y', '-d', '-c', conf],
